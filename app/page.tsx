@@ -1,0 +1,268 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import type { MedicalDocument, Region, ReportView } from "@/lib/types";
+
+type ListedDocument = Omit<MedicalDocument, "anonymizedText"> & {
+  factCount: number;
+  issueCount: number;
+};
+
+const REGIONS: { id: Region; label: string; hint: string }[] = [
+  { id: "RU", label: "Россия", hint: "Для России в каталоге этой поставки нет цитаты. Цели из памяти модели не подставляются." },
+  { id: "EU", label: "Европа", hint: "Берётся версия ESC/EAS 2025. Версия 2019 хранится рядом и актуальной не считается." },
+  { id: "US", label: "США", hint: "Берётся рекомендация AHA/ACC 2018. Числовая цель появится только вместе с группой из документа." },
+];
+
+export default function DocumentsPage() {
+  const [documents, setDocuments] = useState<ListedDocument[]>([]);
+  const [report, setReport] = useState<ReportView | null>(null);
+  const [region, setRegion] = useState<Region>("RU");
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState<"upload" | "delete" | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneQr, setPhoneQr] = useState("");
+  const readyImage = useRef<HTMLInputElement>(null);
+
+  async function load() {
+    const response = await fetch("/api/documents");
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body.error ?? "Не удалось открыть документы.");
+      return;
+    }
+    setDocuments(body.documents ?? []);
+    setReport(body.report ?? null);
+    setRegion(body.region ?? "RU");
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  useEffect(() => {
+    if (!phoneOpen) return;
+    const timer = window.setInterval(() => void load(), 3000);
+    return () => window.clearInterval(timer);
+  }, [phoneOpen]);
+
+  useEffect(() => {
+    if (!phoneCode) {
+      setPhoneQr("");
+      return;
+    }
+    let cancel = false;
+    void import("qrcode").then((QR) =>
+      QR.toDataURL(`${window.location.origin}/phone?code=${phoneCode}`, { margin: 1, width: 280 }),
+    ).then((url) => {
+      if (!cancel) setPhoneQr(url);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [phoneCode]);
+
+  async function upload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setPending("upload");
+    setError("");
+    const form = new FormData();
+    for (const file of Array.from(files)) form.append("files", file);
+    const response = await fetch("/api/documents", { method: "POST", body: form });
+    const body = await response.json();
+    setPending(null);
+    if (!response.ok) {
+      setError(body.error ?? "Не удалось принять файл.");
+      return;
+    }
+    await load();
+  }
+
+  async function chooseRegion(next: Region) {
+    setRegion(next);
+    const response = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ region: next }),
+    });
+    if (!response.ok) {
+      setError("Не удалось сохранить страну рекомендаций.");
+      return;
+    }
+    await load();
+  }
+
+  async function openPhone() {
+    setPhoneOpen(true);
+    setPhoneQr("");
+    setError("");
+    const response = await fetch("/api/phone", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body.error ?? "Не удалось открыть отправку с телефона.");
+      return;
+    }
+    setPhoneCode(body.code ?? "");
+  }
+
+  async function loadExample() {
+    setPending("upload");
+    setError("");
+    const response = await fetch("/api/documents", { method: "PUT" });
+    setPending(null);
+    if (!response.ok) {
+      setError("Не удалось открыть пример.");
+      return;
+    }
+    await load();
+  }
+
+  async function removeAll() {
+    setPending("delete");
+    setError("");
+    const response = await fetch("/api/privacy/delete", { method: "POST" });
+    setPending(null);
+    setConfirmDelete(false);
+    if (!response.ok) {
+      setError("Не удалось удалить данные.");
+      return;
+    }
+    setDocuments([]);
+    setReport(null);
+  }
+
+  const hint = REGIONS.find((item) => item.id === region)?.hint ?? "";
+  const ready = documents.some((document) => document.status === "ready");
+
+  return (
+    <>
+      <p className="kicker">Документы</p>
+      <h1>Соберите анализы в один разбор</h1>
+      <p className="lead">
+        Загрузите бланки, выписки и снимки. Сервис прочитает их вместе, покажет динамику и места, где записи не сходятся. Диагноз и лечение он не назначает.
+      </p>
+
+      <div className="stage">
+        <label className="drop">
+          <strong>{pending === "upload" ? "Читаем файлы…" : "Перетащите сюда или выберите файлы"}</strong>
+          <span className="quiet">Текст, PDF, снимок. Персональные данные в тексте скрываются до разбора.</span>
+          <span className="button">{pending === "upload" ? "Подождите" : "Выбрать файлы"}</span>
+          <input hidden type="file" multiple accept=".txt,.csv,.md,.pdf,.png,.jpg,.jpeg,.webp,.dcm" onChange={(event) => void upload(event.target.files)} />
+        </label>
+        <div className="actions">
+          <button className="secondary" type="button" onClick={() => setGuideOpen(true)}>
+            Инструкция
+          </button>
+          <button className="secondary" type="button" onClick={() => readyImage.current?.click()} disabled={pending !== null}>
+            Готовый PNG или JPEG
+          </button>
+          <input ref={readyImage} hidden type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple onChange={(event) => void upload(event.target.files)} />
+          <button className="secondary" type="button" onClick={() => void openPhone()} disabled={pending !== null}>
+            Со смартфона
+          </button>
+          <button className="secondary" type="button" onClick={() => void loadExample()} disabled={pending !== null}>
+            Открыть пример: бланки и PDF
+          </button>
+        </div>
+      </div>
+      {error ? <p className="error">{error}</p> : null}
+
+      {guideOpen ? (
+        <div className="modal" role="presentation" onClick={() => setGuideOpen(false)}>
+          <div className="window" role="dialog" aria-modal="true" aria-labelledby="guide-title" onClick={(event) => event.stopPropagation()}>
+            <p className="kicker">Для пациента</p>
+            <h2 id="guide-title">Как пользоваться</h2>
+            <div className="quiet stack">
+              <p>Загрузите бланки и выписки текстом или PDF. Из них читаются показатели, даты и дозы, которые написаны в файле.</p>
+              <p>Готовый снимок — кнопка «PNG или JPEG»: файл, который уже лежит на компьютере.</p>
+              <p>Со смартфона — кнопка показывает QR-код. Наведите камеру телефона: можно снять снимок или выбрать готовый PNG или JPEG. Файл попадёт в этот же разбор.</p>
+              <p>Снимок сохраняется, но числа с картинки не читаются: текст на изображении не проверяется.</p>
+              <p>Разбор — один текст. Он показывает, что написано, как это менялось и где записи не сходятся. Диагноз и лечение он не назначает.</p>
+              <p>«Удалить мои данные» стирает файлы этого разбора.</p>
+            </div>
+            <div className="actions plain">
+              <button type="button" onClick={() => setGuideOpen(false)}>Понятно</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {phoneOpen ? (
+        <div className="modal" role="presentation" onClick={() => setPhoneOpen(false)}>
+          <div className="window" role="dialog" aria-modal="true" aria-labelledby="phone-title" onClick={(event) => event.stopPropagation()}>
+            <p className="kicker">Смартфон</p>
+            <h2 id="phone-title">Отправить снимок с телефона</h2>
+            <p className="quiet">Наведите камеру смартфона на код. Снимок или готовый PNG и JPEG появятся в этом списке. Код действует два часа и ведёт только в этот разбор.</p>
+            {phoneQr ? <img className="qr" src={phoneQr} alt="QR-код для отправки снимка" /> : <p className="quiet">Готовим код…</p>}
+            <div className="actions plain">
+              <button className="secondary" type="button" onClick={() => setPhoneOpen(false)}>Закрыть</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {ready && report && report.status !== "empty" ? (
+        <Link className="bridge" href="/report">
+          <span>Разбор собран</span>
+          <strong>{report.headline}</strong>
+          <span className="quiet">Открыть текст для чтения</span>
+        </Link>
+      ) : null}
+
+      <div className="layout">
+        <aside className="card">
+          <p className="quiet">Страна рекомендаций</p>
+          <div className="choice-list">
+            {REGIONS.map((item) => (
+              <button key={item.id} type="button" className={item.id === region ? "choice selected" : "choice"} onClick={() => void chooseRegion(item.id)}>
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <p className="quiet hint">{hint}</p>
+        </aside>
+
+        <section className="stack">
+          {documents.map((document) => (
+            <article key={document.id} className="doc">
+              <div>
+                <strong>{document.fileName}</strong>
+                <p className="meta">
+                  {document.studyDate ? `${document.studyDate}. ` : ""}
+                  {document.factCount > 0 ? `${document.factCount} изм. ` : ""}
+                  {document.issueCount > 0 ? "Есть нестыковка внутри файла. " : ""}
+                  {document.note}
+                </p>
+              </div>
+              <span className={document.status === "ready" ? "pill" : "pill wait"}>{document.statusLabel}</span>
+            </article>
+          ))}
+          <div className="actions">
+            {confirmDelete ? (
+              <>
+                <button className="danger" type="button" onClick={() => void removeAll()} disabled={pending !== null}>
+                  {pending === "delete" ? "Удаляем…" : "Да, удалить всё"}
+                </button>
+                <button className="secondary" type="button" onClick={() => setConfirmDelete(false)} disabled={pending !== null}>
+                  Оставить
+                </button>
+              </>
+            ) : (
+              <button className="danger" type="button" onClick={() => setConfirmDelete(true)} disabled={documents.length === 0 || pending !== null}>
+                Удалить мои данные
+              </button>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
