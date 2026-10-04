@@ -61,7 +61,54 @@ function formatFact(fact: MedicalFact): string {
       ? `, референс бланка ${fact.referenceLow}–${fact.referenceHigh}`
       : "";
   const original = fact.excerpt ? `. В документе: «${fact.excerpt}»` : "";
-  return `${fact.label} ${fact.valueText} ${fact.unit}${when}${range}${original}`.replace(/[ \t]+/g, " ").trim();
+  const mark =
+    fact.status === "conflicting"
+      ? " Запись спорная: число оставлено как в строке."
+      : fact.status === "uncertain"
+        ? fact.date ? " Единица в строке не указана." : " Дата в документе не указана."
+        : "";
+  return `${fact.label} ${fact.valueText} ${fact.unit}${when}${range}${original}${mark}`.replace(/[ \t]+/g, " ").trim();
+}
+
+function classifyFacts(state: OwnerState): void {
+  const groups = new Map<string, MedicalFact[]>();
+  for (const fact of state.facts) {
+    const key = `${fact.concept}|${fact.date ?? ""}`;
+    const list = groups.get(key) ?? [];
+    list.push(fact);
+    groups.set(key, list);
+  }
+  const disputed = new Set<string>();
+  for (const list of groups.values()) {
+    if (new Set(list.map((fact) => fact.valueText)).size > 1) {
+      for (const fact of list) disputed.add(fact.id);
+    }
+  }
+  for (const issue of state.issues) {
+    for (const fact of state.facts) {
+      if (fact.documentId !== issue.documentId) continue;
+      if (fact.line === issue.line || fact.line === issue.otherLine) disputed.add(fact.id);
+    }
+  }
+  for (const fact of state.facts) {
+    fact.dateStatus = fact.date ? "known" : "unknown";
+    fact.extraction = "text";
+    if (disputed.has(fact.id)) fact.status = "conflicting";
+    else if (!fact.date || !fact.unit.trim() || fact.value < 0) fact.status = "uncertain";
+    else fact.status = "extracted";
+  }
+}
+
+function physicianQuestions(conflicts: ReportBlock[], gaps: string[]): string[] {
+  const questions: string[] = [];
+  for (const block of conflicts.slice(0, 3)) {
+    const clause = block.body.split(". ")[0]?.replace(/\.$/, "") ?? block.body;
+    questions.push(`Вопрос врачу: ${clause}. Какую запись считать рабочей?`);
+  }
+  for (const gap of gaps.slice(0, 2)) {
+    questions.push(`Вопрос врачу: ${gap} Это пробел комплекта, не задание на обследование.`);
+  }
+  return questions;
 }
 
 function guidelineNote(state: OwnerState): string {
@@ -298,6 +345,7 @@ export function buildReport(state: OwnerState): ReportView {
     };
   }
 
+  classifyFacts(state);
   const themes: ReportBlock[] = [];
   const gaps: string[] = [];
   for (const axis of AXES.filter((item) => item.kind === "labs")) {
@@ -308,9 +356,10 @@ export function buildReport(state: OwnerState): ReportView {
       continue;
     }
     if (!requiredMet) gaps.push(`Для темы «${axis.title}» основной показатель в документах не найден.`);
+    const coverage = requiredMet ? "" : "По теме есть не все показатели.\n";
     themes.push({
       title: axis.title,
-      body: facts.map(formatFact).join("\n"),
+      body: `${coverage}${facts.map(formatFact).join("\n")}`,
       sources: facts.map((fact) => sourceFor(state, fact)),
     });
   }
@@ -340,13 +389,7 @@ export function buildReport(state: OwnerState): ReportView {
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
     cannotSay.push("По снимку нельзя назвать измерения: текст на изображении не проверен.");
   }
-  const questions: string[] = [];
-  if (conflictBlocks.length > 0) {
-    questions.push("На приёме можно показать места, где документы не сходятся, и спросить, какую запись считать рабочей.");
-  }
-  if (gaps.length > 0) {
-    questions.push("Можно показать врачу, каких данных в загруженном комплекте нет.");
-  }
+  const questions = physicianQuestions(conflictBlocks, gaps);
 
   const parts = [
     `Прочитано ${plural(state.facts.length, "измерение", "измерения", "измерений")} из ${plural(readable.length, "документа", "документов", "документов")}.`,

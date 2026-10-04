@@ -66,6 +66,15 @@ function laterThanToday(iso: string): boolean {
   return Date.parse(`${iso}T00:00:00Z`) > today;
 }
 
+function stampFact<T extends { date: string | null; unit: string; value: number }>(fact: T) {
+  return {
+    ...fact,
+    dateStatus: fact.date ? "known" as const : "unknown" as const,
+    extraction: "text" as const,
+    status: !fact.date || !fact.unit.trim() || fact.value < 0 ? "uncertain" as const : "extracted" as const,
+  };
+}
+
 function pair(issue: { description: string; line: number; excerpt: string }, other?: { line: number; excerpt: string }) {
   return other ? { ...issue, otherLine: other.line, otherExcerpt: other.excerpt } : issue;
 }
@@ -130,7 +139,7 @@ export function parseDocument(text: string): ParsedDocument {
               excerpt: line,
             });
           }
-          facts.push({
+          facts.push(stampFact({
             concept: "BP_SYS",
             label: "верхнее давление",
             value: systolic,
@@ -141,8 +150,8 @@ export function parseDocument(text: string): ParsedDocument {
             referenceHigh: null,
             line: lineNo,
             excerpt: line,
-          });
-          facts.push({
+          }));
+          facts.push(stampFact({
             concept: "BP_DIA",
             label: "нижнее давление",
             value: diastolic,
@@ -153,7 +162,7 @@ export function parseDocument(text: string): ParsedDocument {
             referenceHigh: null,
             line: lineNo,
             excerpt: line,
-          });
+          }));
         } else if (line.replace(concept.pattern, "").trim()) {
           issues.push({
             description: "В строке названо давление, но пары чисел нет. Значение не подставлено.",
@@ -190,7 +199,7 @@ export function parseDocument(text: string): ParsedDocument {
         line: lineNo,
         excerpt: line,
       };
-      facts.push(fact);
+      facts.push(stampFact(fact));
       if (value < 0) {
         issues.push({
           description: `${fact.label} записан как ${fact.valueText}. Число меньше нуля оставлено как в строке и не заменено.`,

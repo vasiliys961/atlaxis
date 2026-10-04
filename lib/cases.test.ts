@@ -47,7 +47,7 @@ test("a file can sit in the queue before it is read", async () => {
 test("simple blank extracts facts and stays a reference", async () => {
   const state = await load(["simple.txt"]);
   const report = buildReport(state);
-  assert.equal(state.facts.some((fact) => fact.concept === "HGB" && fact.value === 140), true);
+  assert.equal(state.facts.some((fact) => fact.concept === "HGB" && fact.value === 140 && fact.status === "extracted" && fact.dateStatus === "known"), true);
   assert.equal(state.facts.some((fact) => fact.concept === "GLU"), true);
   assert.equal(report.status, "ready");
   assert.equal(report.conflicts.length, 0);

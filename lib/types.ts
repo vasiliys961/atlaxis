@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-04.3";
+export const PIPELINE_VERSION = "2026-10-04.4";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
@@ -23,6 +23,9 @@ export type MedicalDocument = {
   createdAt: string;
 };
 
+export type FactStatus = "extracted" | "conflicting" | "uncertain";
+export type DateStatus = "known" | "unknown";
+
 export type MedicalFact = {
   id: string;
   documentId: string;
@@ -32,10 +35,13 @@ export type MedicalFact = {
   valueText: string;
   unit: string;
   date: string | null;
+  dateStatus: DateStatus;
   referenceLow: number | null;
   referenceHigh: number | null;
   line: number;
   excerpt: string;
+  extraction: "text";
+  status: FactStatus;
 };
 
 export type MedicationMention = {

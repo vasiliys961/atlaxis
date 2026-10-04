@@ -83,6 +83,8 @@ test("blank contradiction, dose split and trend", () => {
   assert.equal(report.status, "ready");
   assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /референс этого же бланка/);
+  assert.match(report.questions.join("\n"), /Вопрос врачу: .+референс этого же бланка/);
+  assert.equal(state.facts.find((fact) => fact.concept === "HGB")?.status, "conflicting");
   assert.equal(report.changes.find((item) => item.title === "ЛПНП")?.body.startsWith("4.8 ммоль/л (2024-03-12), затем 3.1"), true);
   assert.match(report.headline, /измерен/);
   assert.match(report.guidelineNote, /версия 2025/);
@@ -122,10 +124,13 @@ test("wording cannot add a dose or an order", () => {
     valueText: "108",
     unit: "г/л",
     date: "2024-03-12",
+    dateStatus: "known",
     referenceLow: 120,
     referenceHigh: 160,
     line: 1,
     excerpt: "гемоглобин 108 г/л",
+    extraction: "text",
+    status: "extracted",
   });
   assert.equal(acceptWording("В бланке гемоглобин 108 г/л.", state), true);
   assert.equal(acceptWording("Сдайте анализ.", state), false);
@@ -220,6 +225,9 @@ test("chat explains findings and drops diagnosis or treatment", () => {
     line: 1,
     excerpt: "ЛПНП 4.8 ммоль/л",
     date: "2024-03-12",
+    dateStatus: "known",
+    extraction: "text",
+    status: "extracted",
   });
   assert.equal(acceptExplanation("ЛПНП в бланке 4.8 ммоль/л. Это выше обычной верхней границы, которую стоит показать врачу.", state), true);
   assert.equal(acceptExplanation("Ваш диагноз: гиперхолестеринемия. Принимайте аторвастатин.", state), false);
@@ -244,6 +252,9 @@ test("sonar looks up guidelines for the recorded labs only", () => {
     line: 1,
     excerpt: "ЛПНП 4.8 ммоль/л",
     date: "2024-03-12",
+    dateStatus: "known",
+    extraction: "text",
+    status: "extracted",
   });
   assert.equal(acceptGuidelineSearch("Клинические рекомендации Минздрава по липидам, 2023. Источник называет порог 1.4 ммоль/л для отдельной группы. В бланке записан ЛПНП 4.8 ммоль/л."), true);
   assert.equal(acceptGuidelineSearch("Ваш диагноз: гиперхолестеринемия. Принимайте аторвастатин."), false);
