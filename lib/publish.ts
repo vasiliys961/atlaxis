@@ -1,5 +1,5 @@
 import { searchGuidelines } from "./guidelines-search";
-import { BRAIN_MODELS } from "./models";
+import { THEME_WRITER } from "./models";
 import { newId } from "./parse";
 import { polzaKey, polzaText } from "./polza";
 import { buildReport } from "./report";
@@ -21,7 +21,7 @@ export function reportNeedsRefresh(state: OwnerState): boolean {
   return next.themes.some((theme) => {
     if (!theme.body.trim()) return false;
     const saved = state.report?.themes.find((item) => item.title === theme.title && item.body === theme.body);
-    return !saved?.notes?.length;
+    return !saved?.notes?.some((note) => note.model === THEME_WRITER.id);
   });
 }
 
@@ -30,16 +30,14 @@ async function narrateThemes(report: ReportView, state: OwnerState): Promise<voi
   await Promise.all(open.map(async (theme) => {
     const packet = [theme.lead, theme.body].filter(Boolean).join("\n");
     const prompt = themePrompt(theme.title, packet);
-    const notes = await Promise.all(BRAIN_MODELS.map(async (model) => {
-      try {
-        const text = await polzaText(model.id, prompt, 280);
-        return acceptWording(text, state, packet) ? { model: model.id, label: model.label, text } : null;
-      } catch {
-        return null;
+    try {
+      const text = await polzaText(THEME_WRITER.id, prompt, 280);
+      if (acceptWording(text, state, packet)) {
+        theme.notes = [{ model: THEME_WRITER.id, label: THEME_WRITER.label, text }];
       }
-    }));
-    const kept = notes.flatMap((item) => (item ? [item] : []));
-    if (kept.length > 0) theme.notes = kept;
+    } catch {
+      // Тема остаётся без абзаца, следующий заход попробует снова.
+    }
   }));
 }
 
@@ -52,7 +50,8 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
   if (same && previous) {
     for (const theme of report.themes) {
       const saved = previous.themes.find((item) => item.title === theme.title && item.body === theme.body);
-      if (saved?.notes?.length) theme.notes = saved.notes;
+      const written = saved?.notes?.filter((note) => note.model === THEME_WRITER.id);
+      if (written?.length) theme.notes = written;
     }
   }
   const [guidelineSearch] = await Promise.all([

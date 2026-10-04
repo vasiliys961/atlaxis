@@ -10,7 +10,7 @@ import { acceptGuidelineSearch, guidelineSearchPrompt } from "./guidelines-searc
 import { sanitizeImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
-import { BRAIN_MODELS } from "./models";
+import { BRAIN_MODELS, THEME_WRITER } from "./models";
 import { parseDocument } from "./parse";
 import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
@@ -24,6 +24,12 @@ test("a theme is retold on its own and not as the whole chart", () => {
   assert.match(prompt, /Кровь/);
   assert.match(prompt, /Не ставь диагноз/);
   assert.doesNotMatch(prompt, /ЛПНП/);
+});
+
+test("a theme is retold by opus alone", () => {
+  assert.equal(THEME_WRITER.id, "anthropic/claude-opus-5.5");
+  assert.equal(THEME_WRITER.label, "Opus 5.5");
+  assert.notEqual(THEME_WRITER.id, BRAIN_MODELS[1]?.id);
 });
 
 test("the second brain is gpt 6.1 and not astra", () => {
