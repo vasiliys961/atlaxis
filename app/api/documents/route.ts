@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit";
 import { ownerId } from "@/lib/owner";
 import { stageFile } from "@/lib/ingest";
 import { catalogEntries, guidelineSentence } from "@/lib/guidelines";
+import { buildRelationships, buildTimeline } from "@/lib/report";
 import { listedDocuments, reportNeedsRefresh } from "@/lib/publish";
 import { continueAfterResponse, drainOwner, enqueueDocument, reportPending } from "@/lib/queue";
 import { withOwner } from "@/lib/store";
@@ -18,7 +19,13 @@ export async function GET() {
       region: state.region,
       documents: listedDocuments(state),
       report: state.report
-        ? { ...state.report, catalog: catalogEntries(state.region), guidelineNote: guidelineSentence(state.region) }
+        ? {
+            ...state.report,
+            catalog: catalogEntries(state.region),
+            guidelineNote: guidelineSentence(state.region),
+            timeline: state.report.status === "blocked" ? [] : buildTimeline(state),
+            relationships: state.report.status === "blocked" ? [] : buildRelationships(state),
+          }
         : null,
       pending: reportPending(state),
       refreshing: reportNeedsRefresh(state),

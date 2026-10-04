@@ -74,6 +74,14 @@ export type SourceRef = {
   excerpt: string;
 };
 
+export type TimelineEvent = {
+  date: string | null;
+  dateStatus: DateStatus;
+  kind: "measurement" | "medication";
+  text: string;
+  source: SourceRef;
+};
+
 export type ReportBlock = {
   title: string;
   body: string;
@@ -101,6 +109,7 @@ export type ReportView = {
   gaps: string[];
   questions: string[];
   relationships: ReportBlock[];
+  timeline?: TimelineEvent[];
   cannotSay: string[];
   limits: string[];
   imageReadings?: { name: string; json: string }[];

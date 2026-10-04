@@ -6,7 +6,7 @@ import test from "node:test";
 import { describeAxes } from "./catalog";
 import { guidelinesFor, targetMark } from "./guidelines";
 import { ingestFile, stageFile } from "./ingest";
-import { enqueueDocument, runNextJob } from "./queue";
+import { completeJob, enqueueDocument, prepareJob } from "./queue";
 import { buildReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 
@@ -33,10 +33,13 @@ test("a file can sit in the queue before it is read", async () => {
     const bytes = await readFile(path.join(root, "simple.txt"));
     const staged = await stageFile(state, dir, "simple.txt", bytes);
     assert.equal(staged.status, "queued");
-    assert.equal(staged.statusLabel, "Разбирается");
+    assert.equal(staged.statusLabel, "Проверяется");
     assert.equal(state.facts.length, 0);
     enqueueDocument(state, staged.id, staged.fileName);
-    assert.equal(await runNextJob(state, dir), true);
+    const prepared = await prepareJob(state, dir);
+    assert.equal(prepared.kind, "ready");
+    assert.equal(staged.statusLabel, "Разбирается");
+    if (prepared.kind === "ready") await completeJob(state, prepared);
     assert.equal(staged.status, "ready");
     assert.equal(state.jobs[0]?.status, "done");
     assert.equal(state.facts.some((fact) => fact.concept === "HGB" && fact.value === 140), true);
@@ -75,6 +78,10 @@ test("different doses on different dates are a change", async () => {
   const state = await load(["dose-a.txt", "dose-b.txt"]);
   const report = buildReport(state);
   assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
+  assert.equal(report.timeline?.[0]?.date, "2023-01-01");
+  assert.equal(report.timeline?.[1]?.date, "2024-01-01");
+  assert.match(report.timeline?.map((item) => item.text).join("\n") ?? "", /В тексте: аторвастатин 10 мг/);
+  assert.doesNotMatch(report.timeline?.map((item) => item.text).join("\n") ?? "", /вызвал|назначьте/);
   assert.doesNotMatch(report.conflicts.map((item) => item.title).join("\n"), /Разные дозы/);
   assert.doesNotMatch(JSON.stringify(report), /принимайте|назначьте/i);
 });

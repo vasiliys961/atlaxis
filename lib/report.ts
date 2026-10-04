@@ -1,7 +1,45 @@
 import { createHash } from "crypto";
+import { identityLeft } from "./anonymize";
 import { AXES } from "./catalog";
 import { catalogEntries, guidelineSentence, guidelinesFor } from "./guidelines";
-import { PIPELINE_VERSION, type MedicalFact, type OwnerState, type ReportBlock, type ReportView, type SourceRef } from "./types";
+import { PIPELINE_VERSION, type MedicalFact, type MedicationMention, type OwnerState, type ReportBlock, type ReportView, type SourceRef, type TimelineEvent } from "./types";
+
+function isPicture(name: string): boolean {
+  return /\.(png|jpe?g|webp)$/i.test(name);
+}
+
+function imagePeriodLinks(state: OwnerState): ReportBlock[] {
+  const ready = new Set(state.documents.filter((item) => item.status === "ready").map((item) => item.id));
+  const blocks: ReportBlock[] = [];
+  const seen = new Set<string>();
+  for (const picture of state.documents) {
+    if (!ready.has(picture.id) || !isPicture(picture.fileName)) continue;
+    for (const imageFact of state.facts) {
+      if (imageFact.documentId !== picture.id || !imageFact.date) continue;
+      const month = imageFact.date.slice(0, 7);
+      const other = state.facts.find((fact) => (
+        ready.has(fact.documentId)
+        && fact.documentId !== picture.id
+        && fact.date?.slice(0, 7) === month
+      ));
+      if (!other?.date) continue;
+      const key = `${picture.id}|${month}|${other.documentId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const otherDocument = state.documents.find((item) => item.id === other.documentId);
+      blocks.push({
+        title: "В тот же период",
+        body: `В тот же период, ${month}, запись есть и на снимке «${picture.fileName}», и в документе «${otherDocument?.fileName ?? "документ"}». Оба числа уже были в этих файлах. Ясной связи разбор не называет.`,
+        sources: [sourceFor(state, imageFact), sourceFor(state, other)],
+      });
+    }
+  }
+  return blocks;
+}
+
+export function buildRelationships(state: OwnerState): ReportBlock[] {
+  return [...periodLinks(state), ...imagePeriodLinks(state)];
+}
 
 function periodLinks(state: OwnerState): ReportBlock[] {
   const blocks: ReportBlock[] = [];
@@ -42,6 +80,59 @@ function plural(count: number, one: string, few: string, many: string): string {
 
 function writtenDose(item: { doseText: string; unit: string; frequency?: string }): string {
   return `${item.doseText} ${item.unit}${item.frequency ? `, ${item.frequency}` : ""}`;
+}
+
+function sourceForMedication(state: OwnerState, item: MedicationMention): SourceRef {
+  const document = state.documents.find((doc) => doc.id === item.documentId);
+  return {
+    documentId: item.documentId,
+    documentName: document?.fileName ?? "документ",
+    line: item.line,
+    excerpt: item.excerpt,
+  };
+}
+
+export function buildTimeline(state: OwnerState): TimelineEvent[] {
+  const ready = new Set(state.documents.filter((item) => item.status === "ready").map((item) => item.id));
+  const events: TimelineEvent[] = [];
+  for (const fact of state.facts) {
+    if (!ready.has(fact.documentId)) continue;
+    const range =
+      fact.referenceLow != null && fact.referenceHigh != null
+        ? `, референс бланка ${fact.referenceLow}–${fact.referenceHigh}`
+        : "";
+    const mark =
+      fact.status === "conflicting"
+        ? " Запись спорная: число оставлено как в строке."
+        : !fact.unit.trim() || fact.value < 0
+          ? " Единица в строке не указана."
+          : "";
+    events.push({
+      date: fact.date,
+      dateStatus: fact.date ? "known" : "unknown",
+      kind: "measurement",
+      text: `${`${fact.label} ${fact.valueText} ${fact.unit}${range}`.replace(/[ \t]+/g, " ").trim().replace(/\.+$/u, "")}.${mark}`.replace(/[ \t]+/g, " ").trim(),
+      source: sourceFor(state, fact),
+    });
+  }
+  for (const item of state.medications) {
+    if (!ready.has(item.documentId)) continue;
+    events.push({
+      date: item.date,
+      dateStatus: item.date ? "known" : "unknown",
+      kind: "medication",
+      text: `В тексте: ${item.name} ${writtenDose(item)}.`,
+      source: sourceForMedication(state, item),
+    });
+  }
+  events.sort((left, right) => {
+    if (left.date && right.date && left.date !== right.date) return left.date < right.date ? -1 : 1;
+    if (left.date && !right.date) return -1;
+    if (!left.date && right.date) return 1;
+    if (left.source.line !== right.source.line) return left.source.line - right.source.line;
+    return left.source.documentId < right.source.documentId ? -1 : left.source.documentId > right.source.documentId ? 1 : 0;
+  });
+  return events;
 }
 
 function sourceFor(state: OwnerState, fact: MedicalFact): SourceRef {
@@ -333,6 +424,7 @@ export function buildReport(state: OwnerState): ReportView {
       cannotSay: state.documents.length === 0 ? [] : ["По этим документам нельзя назвать диагноз или схему лечения."],
       limits,
       imageReadings,
+      timeline: [],
     };
   }
 
@@ -378,7 +470,7 @@ export function buildReport(state: OwnerState): ReportView {
 
   const conflictBlocks = conflicts(state);
   const changeBlocks = [...trends(state), ...doseChanges(state)];
-  const relationshipBlocks = periodLinks(state);
+  const relationshipBlocks = buildRelationships(state);
   const cannotSay = ["По этим документам нельзя назвать диагноз или схему лечения."];
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
     cannotSay.push("По снимку нельзя назвать измерения: текст на изображении не проверен.");
@@ -416,6 +508,7 @@ export function buildReport(state: OwnerState): ReportView {
     cannotSay,
     limits,
     imageReadings,
+    timeline: buildTimeline(state),
   };
   return validateReport(report, state);
 }
@@ -436,6 +529,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     ...report.questions,
     ...report.cannotSay,
     ...report.limits,
+    ...(report.timeline ?? []).map((item) => item.text),
   ].join("\n");
 
   if (FORBIDDEN.test(prose)) reasons.push("В тексте есть формулировка за границей справки.");
@@ -472,7 +566,10 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
       if (shown && !inFacts) reasons.push("В тексте есть целевой показатель не из документов.");
     }
   }
-  const clinical = [...report.themes, ...report.changes, ...report.conflicts, ...report.relationships].map((item) => item.body).join("\n");
+  const clinical = [
+    ...[...report.themes, ...report.changes, ...report.conflicts, ...report.relationships].map((item) => item.body),
+    ...(report.timeline ?? []).map((item) => item.text),
+  ].join("\n");
   const withoutDates = clinical.replace(/\d{4}-\d{2}-\d{2}/g, " ");
   for (const match of withoutDates.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:ммоль\/л|г\/л|мм|Ед\/л|мг|мкг)/giu)) {
     const value = match[1]?.replace(",", ".");
@@ -481,6 +578,10 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
   for (const issue of state.issues) {
     const shown = report.conflicts.some((block) => block.body.includes(issue.description.slice(0, 24)));
     if (!shown) reasons.push("Ошибка документа не попала в текст разбора.");
+  }
+  const confirmed = state.documents.filter((item) => item.status === "ready");
+  if (confirmed.some((item) => identityLeft(item.anonymizedText))) {
+    reasons.push("Обезличивание файла не подтверждено.");
   }
 
   if (reasons.length === 0) return report;
@@ -497,6 +598,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     gaps: [],
     questions: [],
     cannotSay: [],
+    timeline: [],
     guidelineNote: "",
     imageReadings: [],
     wording: [],

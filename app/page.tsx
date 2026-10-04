@@ -182,7 +182,7 @@ export default function DocumentsPage() {
           onDrop={(event) => { event.preventDefault(); setOver(false); void upload(event.dataTransfer.files); }}
         >
           <div>
-            <h2>{pending === "upload" ? "Принимаем файлы…" : waiting ? "Файлы разбираются" : "Перетащите сюда или выберите файлы"}</h2>
+            <h2>{pending === "upload" ? "Принимаем файлы…" : waiting ? (documents.some((item) => item.statusLabel === "Разбирается") ? "Файлы разбираются" : "Файлы проверяются") : "Перетащите сюда или выберите файлы"}</h2>
             <p className="quiet">Текст, PDF, снимок. Персональные данные в тексте скрываются до разбора.</p>
           </div>
           <label className="button">

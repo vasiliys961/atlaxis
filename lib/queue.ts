@@ -44,16 +44,23 @@ function claim(state: OwnerState): JobRecord | undefined {
   });
 }
 
-export async function runNextJob(state: OwnerState, dir: string): Promise<boolean> {
+export type PreparedJob =
+  | { kind: "idle" }
+  | { kind: "settled" }
+  | { kind: "ready"; documentId: string; origin: "phone" | "computer"; bytes: Buffer };
+
+export async function prepareJob(state: OwnerState, dir: string): Promise<PreparedJob> {
   const job = claim(state);
-  if (!job?.documentId) return false;
+  if (!job?.documentId) return { kind: "idle" };
   job.status = "running";
   job.at = new Date().toISOString();
   const document = state.documents.find((item) => item.id === job.documentId);
   if (!document || document.status !== "queued") {
     job.status = "done";
-    return true;
+    return { kind: "settled" };
   }
+  document.statusLabel = "Разбирается";
+  document.note = "Файл читается.";
   const local = path.join(dir, `${document.id}.bin`);
   const bytes = await readFile(local).catch(() => readBinary(`${path.basename(dir)}/${document.id}.bin`));
   if (!bytes) {
@@ -62,10 +69,30 @@ export async function runNextJob(state: OwnerState, dir: string): Promise<boolea
     document.note = "Файл принят, но оригинал в хранилище не найден.";
     job.status = "failed";
     state.report = null;
-    return true;
+    return { kind: "settled" };
   }
-  await settleDocument(state, document, bytes, job.origin ?? "computer");
-  job.status = document.status === "queued" ? "failed" : "done";
+  return { kind: "ready", documentId: document.id, origin: job.origin ?? "computer", bytes };
+}
+
+export async function completeJob(
+  state: OwnerState,
+  job: { documentId: string; origin: "phone" | "computer"; bytes: Buffer },
+): Promise<void> {
+  const record = state.jobs.find((item) => item.documentId === job.documentId && item.status === "running");
+  const document = state.documents.find((item) => item.id === job.documentId);
+  if (!record || !document) return;
+  if (document.status !== "queued") {
+    record.status = "done";
+    return;
+  }
+  await settleDocument(state, document, job.bytes, job.origin);
+  record.status = document.status === "queued" ? "failed" : "done";
+}
+
+export async function runNextJob(state: OwnerState, dir: string): Promise<boolean> {
+  const step = await prepareJob(state, dir);
+  if (step.kind === "idle") return false;
+  if (step.kind === "ready") await completeJob(state, step);
   return true;
 }
 
@@ -74,8 +101,12 @@ export async function drainOwner(ownerId: string): Promise<void> {
   draining.add(ownerId);
   try {
     for (let step = 0; step < 8; step += 1) {
-      const more = await withOwner(ownerId, async (state, dir) => runNextJob(state, dir));
-      if (!more) break;
+      const prepared = await withOwner(ownerId, async (state, dir) => prepareJob(state, dir));
+      if (prepared.kind === "idle") break;
+      if (prepared.kind === "settled") continue;
+      await withOwner(ownerId, async (state) => {
+        await completeJob(state, prepared);
+      });
     }
     await withOwner(ownerId, async (state) => {
       if (state.jobs.some((job) => job.status === "queued" || job.status === "running")) return;

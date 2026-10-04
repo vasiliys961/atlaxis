@@ -123,6 +123,12 @@ test("blank contradiction, dose split and trend", () => {
     assert.equal(hemoglobin.status, "conflicting");
   }
   assert.equal(report.changes.find((item) => item.title === "ЛПНП")?.body.startsWith("4.8 ммоль/л (2024-03-12), затем 3.1"), true);
+  const timeline = report.timeline ?? [];
+  assert.equal(timeline[0]?.date, "2024-03-12");
+  assert.equal(timeline.at(-1)?.date, "2025-01-09");
+  assert.match(timeline.map((item) => item.text).join("\n"), /Запись спорная/);
+  assert.match(timeline.map((item) => item.text).join("\n"), /В тексте: аторвастатин 20 мг/);
+  assert.doesNotMatch(timeline.map((item) => item.text).join("\n"), /вызвал|назначьте/);
   assert.match(report.headline, /измерен/);
   assert.match(report.guidelineNote, /версия 2025/);
   assert.match(report.guidelineNote, /актуальной не считается/);
@@ -172,6 +178,163 @@ test("wording cannot add a dose or an order", () => {
   assert.equal(acceptWording("В бланке гемоглобин 108 г/л.", state), true);
   assert.equal(acceptWording("Сдайте анализ.", state), false);
   assert.equal(acceptWording("Примите 10 мг.", state), false);
+});
+
+test("an undated row stays at the end of the timeline", () => {
+  const state = emptyState();
+  state.documents.push({
+    id: "a",
+    fileName: "a.txt",
+    byteSize: 1,
+    contentHash: "1",
+    pipelineVersion: "t",
+    status: "ready",
+    statusLabel: "Готово",
+    note: "",
+    studyDate: null,
+    anonymizedText: "Гемоглобин 140 г/л",
+    createdAt: "",
+  });
+  state.facts.push(
+    {
+      id: "later",
+      documentId: "a",
+      concept: "GLU",
+      label: "глюкоза",
+      value: 5.1,
+      valueText: "5.1",
+      unit: "ммоль/л",
+      date: "2025-01-09",
+      dateStatus: "known",
+      referenceLow: null,
+      referenceHigh: null,
+      line: 2,
+      excerpt: "Глюкоза 5.1 ммоль/л",
+      extraction: "text",
+      status: "extracted",
+    },
+    {
+      id: "undated",
+      documentId: "a",
+      concept: "HGB",
+      label: "гемоглобин",
+      value: 140,
+      valueText: "140",
+      unit: "г/л",
+      date: null,
+      dateStatus: "unknown",
+      referenceLow: null,
+      referenceHigh: null,
+      line: 1,
+      excerpt: "Гемоглобин 140 г/л",
+      extraction: "text",
+      status: "uncertain",
+    },
+  );
+  const report = buildReport(state);
+  assert.equal(report.timeline?.[0]?.date, "2025-01-09");
+  assert.equal(report.timeline?.at(-1)?.date, null);
+  assert.equal(report.timeline?.at(-1)?.dateStatus, "unknown");
+});
+
+test("a ready file that still has a contact is not shown", () => {
+  const state = emptyState();
+  state.documents.push({
+    id: "a",
+    fileName: "a.txt",
+    byteSize: 1,
+    contentHash: "1",
+    pipelineVersion: "t",
+    status: "ready",
+    statusLabel: "Готово",
+    note: "",
+    studyDate: "2024-03-12",
+    anonymizedText: "Почта ivan@example.com\nГемоглобин 140 г/л",
+    createdAt: "",
+  });
+  state.facts.push({
+    id: "f",
+    documentId: "a",
+    concept: "HGB",
+    label: "гемоглобин",
+    value: 140,
+    valueText: "140",
+    unit: "г/л",
+    date: "2024-03-12",
+    dateStatus: "known",
+    referenceLow: null,
+    referenceHigh: null,
+    line: 2,
+    excerpt: "Гемоглобин 140 г/л",
+    extraction: "text",
+    status: "extracted",
+  });
+  const report = buildReport(state);
+  assert.equal(report.status, "blocked");
+  assert.match(report.blockReasons.join("\n"), /Обезличивание файла не подтверждено/);
+  assert.equal(report.timeline?.length, 0);
+  assert.doesNotMatch(JSON.stringify(report), /ivan@example.com/);
+});
+
+test("a read image stays beside the same-month blank and adds no measurement", () => {
+  const state = emptyState();
+  state.documents.push(
+    {
+      id: "pic",
+      fileName: "scan.png",
+      byteSize: 1,
+      contentHash: "p",
+      pipelineVersion: "t",
+      status: "ready",
+      statusLabel: "Готово",
+      note: "",
+      studyDate: "2024-03-12",
+      anonymizedText: "{\"lines\":[\"ЛПНП 4.8 ммоль/л\"]}",
+      createdAt: "",
+    },
+    {
+      id: "blank",
+      fileName: "blank.txt",
+      byteSize: 1,
+      contentHash: "b",
+      pipelineVersion: "t",
+      status: "ready",
+      statusLabel: "Готово",
+      note: "",
+      studyDate: "2024-03-12",
+      anonymizedText: "Гемоглобин 140 г/л",
+      createdAt: "",
+    },
+  );
+  const fact = (id: string, documentId: string, concept: string, label: string, valueText: string, unit: string, excerpt: string) => ({
+    id,
+    documentId,
+    concept,
+    label,
+    value: Number(valueText),
+    valueText,
+    unit,
+    date: "2024-03-12",
+    dateStatus: "known" as const,
+    referenceLow: null,
+    referenceHigh: null,
+    line: 1,
+    excerpt,
+    extraction: "text" as const,
+    status: "extracted" as const,
+  });
+  state.facts.push(
+    fact("img", "pic", "LDL_C", "ЛПНП", "4.8", "ммоль/л", "ЛПНП 4.8 ммоль/л"),
+    fact("lab", "blank", "HGB", "гемоглобин", "140", "г/л", "Гемоглобин 140 г/л"),
+  );
+  const before = state.facts.length;
+  const report = buildReport(state);
+  assert.equal(state.facts.length, before);
+  assert.match(report.relationships.map((item) => item.body).join("\n"), /на снимке «scan.png»/);
+  assert.match(report.relationships.map((item) => item.body).join("\n"), /Оба числа уже были/);
+  assert.match(report.relationships.map((item) => item.body).join("\n"), /Ясной связи/);
+  assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал|диагноз\s*:/);
+  assert.equal(report.relationships[0]?.sources.length, 2);
 });
 
 test("invented dose blocks the report", () => {

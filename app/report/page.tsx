@@ -5,7 +5,13 @@ import { useEffect, useState } from "react";
 import { targetMark } from "@/lib/guidelines";
 import { EYES_MODEL, SONAR_MODEL } from "@/lib/models";
 import { writerFor } from "@/lib/router";
-import type { ReportBlock, ReportView } from "@/lib/types";
+import type { ReportBlock, ReportView, TimelineEvent } from "@/lib/types";
+
+function writtenWhen(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("ru-RU", { dateStyle: "long", timeStyle: "short" }).format(date);
+}
 
 function plain(text: string): string {
   return text.replace(/[#*`]/g, "").replace(/\s+/g, " ").trim();
@@ -26,6 +32,16 @@ function Quote({ source }: { source: ReportBlock["sources"][number] }) {
     <blockquote>
       {source.documentName}, строка {source.line}: {source.excerpt}
     </blockquote>
+  );
+}
+
+function TimelineRow({ event }: { event: TimelineEvent }) {
+  const when = event.date ?? "Дата не указана";
+  return (
+    <details className="fact">
+      <summary>{when}. {event.text}</summary>
+      <Quote source={event.source} />
+    </details>
   );
 }
 
@@ -180,6 +196,16 @@ export default function ReportPage() {
         </section>
       ) : null}
 
+      {report.timeline && report.timeline.length > 0 ? (
+        <section className="section">
+          <h2>По времени</h2>
+          <p className="quiet">Записи стоят по дате документа. Строка без даты — в конце. Связи между ними здесь не называются.</p>
+          {report.timeline.map((event) => (
+            <TimelineRow key={`${event.source.documentId}-${event.source.line}-${event.kind}-${event.text}`} event={event} />
+          ))}
+        </section>
+      ) : null}
+
       {report.changes.length > 0 ? (
         <section className="section">
           <h2>Как менялось</h2>
@@ -275,6 +301,7 @@ export default function ReportPage() {
       </section>
 
       <section className="footer-note">
+        <p className="quiet">Этот разбор собран {writtenWhen(report.generatedAt)}. Версия обработки {report.pipelineVersion}.</p>
         {report.limits.map((limit) => (
           <p key={limit} className="quiet">{limit}</p>
         ))}

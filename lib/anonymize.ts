@@ -31,6 +31,10 @@ function sensitiveLine(line: string): boolean {
   return BIRTH.test(line) || POLICY.test(line) || ADDRESS.test(line) || PASSPORT.test(line) || SNILS.test(line);
 }
 
+export function identityLeft(text: string): boolean {
+  return EMAIL.test(text) || PHONE.test(text) || PASSPORT.test(text) || SNILS.test(text) || BIRTH.test(text);
+}
+
 export function anonymizeText(input: string): Anonymized {
   const lines = input.split(/\r?\n/).map((line) => {
     if (sensitiveLine(line)) return "[данные удалены]";
@@ -50,7 +54,7 @@ export function anonymizeText(input: string): Anonymized {
   });
 
   const text = lines.join("\n");
-  const leaked = EMAIL.test(text) || PHONE.test(text) || PASSPORT.test(text) || SNILS.test(text) || BIRTH.test(text);
+  const leaked = identityLeft(text);
   const redactionCount = (text.match(/\[(?:email|телефон|документ|имя|данные удалены)\]/g) ?? []).length;
   return { text, redactionCount, leaked };
 }
