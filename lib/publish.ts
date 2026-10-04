@@ -6,38 +6,25 @@ import { buildReport } from "./report";
 import type { OwnerState, ReportView } from "./types";
 import { acceptWording } from "./wording";
 
-function sourceOf(report: ReportView): string {
-  return [
-    report.headline,
-    report.intro,
-    report.guidelineNote,
-    ...report.themes.map((item) => `${item.title}\n${item.body}`),
-    ...report.changes.map((item) => `${item.title}\n${item.body}`),
-    ...report.conflicts.map((item) => `${item.title}\n${item.body}`),
-    ...report.relationships.map((item) => item.body),
-    ...report.gaps,
-    ...report.questions,
-    ...report.cannotSay,
-    ...report.limits,
-    ...(report.imageReadings ?? []).map((item) => item.json),
-  ].join("\n").slice(0, 12000);
+export function themePrompt(title: string, packet: string): string {
+  return `Это одна тема уже собранного разбора, не весь комплект. Перескажи только её одним законченным абзацем. Не связывай с другими темами. Не ставь диагноз, не назначай лечение и не добавляй чисел.\n\nТема: ${title}\n${packet}`;
 }
 
-async function narrate(report: ReportView, state: OwnerState): Promise<NonNullable<ReportView["wording"]> | null> {
-  const source = sourceOf(report);
-  const prompt = `Ниже справочный разбор и JSON снимков. Перескажи это пациенту коротко и только этими сведениями. Не добавляй числа, дозы, диагноз, назначение и совет сдать анализ.\n\n${source}`;
-  const results = await Promise.all(
-    BRAIN_MODELS.map(async (model) => {
+async function narrateThemes(report: ReportView, state: OwnerState): Promise<void> {
+  await Promise.all(report.themes.filter((theme) => theme.body.trim() && !theme.notes?.length).map(async (theme) => {
+    const packet = [theme.lead, theme.body].filter(Boolean).join("\n");
+    const prompt = themePrompt(theme.title, packet);
+    const notes = await Promise.all(BRAIN_MODELS.map(async (model) => {
       try {
-        const text = await polzaText(model.id, prompt, 500);
-        return acceptWording(text, state) ? { model: model.id, label: model.label, text } : null;
+        const text = await polzaText(model.id, prompt, 280);
+        return acceptWording(text, state, packet) ? { model: model.id, label: model.label, text } : null;
       } catch {
-        return undefined;
+        return null;
       }
-    }),
-  );
-  if (results.every((item) => item === undefined)) return null;
-  return results.flatMap((item) => (item ? [{ model: item.model, label: item.label, text: item.text }] : []));
+    }));
+    const kept = notes.flatMap((item) => (item ? [item] : []));
+    if (kept.length > 0) theme.notes = kept;
+  }));
 }
 
 export async function publishReport(state: OwnerState): Promise<ReportView> {
@@ -46,15 +33,18 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
   const previous = state.report;
   const same = previous?.inputHash === report.inputHash;
   const canAsk = Boolean(report.modelsReady && report.status === "ready" && state.documents.some((item) => item.status === "ready"));
-  const [wording, guidelineSearch] = await Promise.all([
-    same && previous?.wording
-      ? Promise.resolve(previous.wording)
-      : canAsk ? narrate(report, state) : Promise.resolve(null),
+  if (same && previous) {
+    for (const theme of report.themes) {
+      const saved = previous.themes.find((item) => item.title === theme.title && item.body === theme.body);
+      if (saved?.notes?.length) theme.notes = saved.notes;
+    }
+  }
+  const [guidelineSearch] = await Promise.all([
     same && previous?.guidelineSearch
       ? Promise.resolve(previous.guidelineSearch)
       : canAsk && state.facts.length > 0 ? searchGuidelines(state) : Promise.resolve(null),
+    canAsk ? narrateThemes(report, state) : Promise.resolve(),
   ]);
-  if (wording) report.wording = wording;
   if (guidelineSearch) report.guidelineSearch = guidelineSearch;
   state.report = report;
   const last = state.reports[state.reports.length - 1];

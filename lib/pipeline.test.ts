@@ -12,9 +12,19 @@ import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
 import { BRAIN_MODELS } from "./models";
 import { parseDocument } from "./parse";
+import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
 import { buildReport, validateReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
+
+test("a theme is retold on its own and not as the whole chart", () => {
+  const prompt = themePrompt("Кровь", "гемоглобин 108 г/л");
+  assert.match(prompt, /не весь комплект/);
+  assert.match(prompt, /только её/);
+  assert.match(prompt, /Кровь/);
+  assert.match(prompt, /Не ставь диагноз/);
+  assert.doesNotMatch(prompt, /ЛПНП/);
+});
 
 test("the second brain is gpt 6.1 and not astra", () => {
   const gpt = BRAIN_MODELS[1];

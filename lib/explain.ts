@@ -26,7 +26,7 @@ function dossier(report: ReportView): string {
     report.intro,
     report.guidelineNote,
     report.guidelineSearch ? `Найденные рекомендации:\n${report.guidelineSearch}` : "",
-    ...report.themes.map((item) => `${item.title}\n${item.body}`),
+    ...report.themes.map((item) => `${item.title}\n${item.body}\n${(item.notes ?? []).map((note) => note.text).join("\n")}`),
     ...report.changes.map((item) => `${item.title}\n${item.body}`),
     ...report.conflicts.map((item) => `${item.title}\n${item.body}`),
     ...report.relationships.map((item) => `${item.title}\n${item.body}`),
@@ -58,8 +58,12 @@ async function explain(state: OwnerState, question: string): Promise<string> {
   });
   if (!decision.allow) return "Сейчас ответ по анализам недоступен: ключ модели не задан. Разбор на экране собран правилами.";
   const report = buildReport(state);
-  if (state.report?.inputHash === report.inputHash && state.report.guidelineSearch) {
-    report.guidelineSearch = state.report.guidelineSearch;
+  if (state.report?.inputHash === report.inputHash) {
+    if (state.report.guidelineSearch) report.guidelineSearch = state.report.guidelineSearch;
+    for (const theme of report.themes) {
+      const saved = state.report.themes.find((item) => item.title === theme.title && item.body === theme.body);
+      if (saved?.notes?.length) theme.notes = saved.notes;
+    }
   }
   const prompt = `${EXPLAIN_SYSTEM}
 

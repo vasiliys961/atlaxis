@@ -5,6 +5,10 @@ import { useEffect, useState } from "react";
 import { BRAIN_MODELS, EYES_MODEL, SONAR_MODEL } from "@/lib/models";
 import type { ReportBlock, ReportView } from "@/lib/types";
 
+function plain(text: string): string {
+  return text.replace(/[#*`]/g, "").replace(/\s+/g, " ").trim();
+}
+
 function Lines({ text }: { text: string }) {
   return (
     <>
@@ -193,6 +197,9 @@ export default function ReportPage() {
             <article key={block.title} className="note">
               <h3>{block.title}</h3>
               <Statements block={block} />
+              {block.notes?.map((note) => (
+                <p key={note.model} className="quiet">{note.label}. {plain(note.text)}</p>
+              ))}
             </article>
           ))}
         </section>
