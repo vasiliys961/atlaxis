@@ -39,6 +39,16 @@ export const GUIDELINES: Guideline[] = [
     version: "2018",
     publicationDate: "2018-11-10",
     region: "US",
+    supersededBy: "aha-acc-dyslipidemia-2026",
+  },
+  {
+    id: "aha-acc-dyslipidemia-2026",
+    organization: "ACC/AHA",
+    title: "Guideline on the management of dyslipidemia",
+    version: "2026",
+    publicationDate: "2026",
+    region: "US",
+    url: "https://www.jacc.org/doi/10.1016/j.jacc.2025.11.016",
   },
 ];
 
@@ -94,9 +104,9 @@ export function targetMark(item: CatalogEntry): string {
 }
 
 export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
-  const own = guidelinesFor(region);
+  const own = currentGuidelines(region);
   if (own.length > 0) return own.map((item) => toEntry(item, "selected"));
-  return [...guidelinesFor("EU"), ...guidelinesFor("US")].map((item) => toEntry(item, "offered"));
+  return [...currentGuidelines("EU"), ...currentGuidelines("US")].map((item) => toEntry(item, "offered"));
 }
 
 export function guidelineSentence(region: Guideline["region"], search?: string | null): string {
@@ -113,9 +123,8 @@ export function guidelineSentence(region: Guideline["region"], search?: string |
     return "Российской записи в каталоге нет. Разбор ищет опубликованные рекомендации по уже загруженным анализам. Если не найдёт, ниже остаются европейские и американские записи. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
   }
   const used = current.map((item) => `${item.organization}, ${item.title}, версия ${item.version}`).join("; ");
-  const older = all.filter((item) => item.supersededBy);
-  const olderNote = older.length > 0
-    ? ` Более ранняя версия ${older.map((item) => item.version).join(", ")} в каталоге сохранена и актуальной не считается.`
+  const olderNote = all.some((item) => item.supersededBy)
+    ? " Более ранняя редакция не показывается и актуальной не считается."
     : "";
-  return `Разбор смотрит каталог для ${regionName}: ${used}.${olderNote} Пометка: число цели, если оно есть в записи, относится к группе из источника и не является личной целью.`;
+  return `Разбор называет только последнюю редакцию для ${regionName}: ${used}.${olderNote} Пометка: число цели, если оно есть в записи, относится к группе из источника и не является личной целью.`;
 }

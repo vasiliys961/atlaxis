@@ -1,5 +1,5 @@
 import { guidelineSentence } from "./guidelines";
-import { RU_NOT_FOUND, searchGuidelines, sonarFoundRussian } from "./guidelines-search";
+import { RU_NOT_FOUND, SEARCH_SCOPE, searchGuidelines, sonarFoundRussian } from "./guidelines-search";
 import { OPUS } from "./models";
 import { writerFor } from "./router";
 import { newId } from "./parse";
@@ -20,9 +20,10 @@ export function reportNeedsRefresh(state: OwnerState): boolean {
   const next = buildReport(state);
   if (state.report?.inputHash !== next.inputHash) return true;
   if (!polzaKey()) return false;
-  if (state.region === "RU" && state.report?.status === "ready" && state.facts.length > 0) {
+  if (state.report?.status === "ready" && state.facts.length > 0) {
     const text = state.report.guidelineSearch ?? "";
-    if (!sonarFoundRussian(text) && !text.includes(RU_NOT_FOUND)) return true;
+    if (!text.includes(SEARCH_SCOPE)) return true;
+    if (state.region === "RU" && !sonarFoundRussian(text) && !text.includes(RU_NOT_FOUND)) return true;
   }
   return next.themes.some((theme) => {
     if (!theme.body.trim()) return false;
@@ -67,7 +68,10 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
     }
   }
   const savedSearch = same ? previous?.guidelineSearch : undefined;
-  const reuseSearch = Boolean(savedSearch && (report.region !== "RU" || sonarFoundRussian(savedSearch) || savedSearch.includes(RU_NOT_FOUND)));
+  const reuseSearch = Boolean(
+    savedSearch?.includes(SEARCH_SCOPE)
+    && (report.region !== "RU" || sonarFoundRussian(savedSearch) || savedSearch.includes(RU_NOT_FOUND)),
+  );
   const [guidelineSearch] = await Promise.all([
     reuseSearch
       ? Promise.resolve(savedSearch ?? null)

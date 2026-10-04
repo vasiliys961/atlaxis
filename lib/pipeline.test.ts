@@ -481,6 +481,8 @@ test("a finding becomes a professor question without a diagnosis request", () =>
 });
 
 test("chat explains findings and drops diagnosis or treatment", () => {
+  assert.match(EXPLAIN_SYSTEM, /Когда сравниваешь сведения с рекомендациями/);
+  assert.match(EXPLAIN_SYSTEM, /только на самые последние данные/);
   assert.match(EXPLAIN_SYSTEM, /Не ставь диагноз/);
   assert.match(EXPLAIN_SYSTEM, /Не назначай и не отменяй лечение/);
   const state = emptyState();
@@ -508,6 +510,10 @@ test("chat explains findings and drops diagnosis or treatment", () => {
 test("sonar looks up guidelines for the recorded labs only", () => {
   const prompt = guidelineSearchPrompt("RU", "ЛПНП: 4.8 ммоль/л, 2024-03-12");
   assert.match(prompt, /Минздрава России/);
+  assert.match(prompt, /не только для этого комплекта/);
+  assert.match(prompt, /Когда сравниваешь уже записанные значения с рекомендациями/);
+  assert.match(prompt, /только самые последние опубликованные данные/);
+  assert.match(prompt, /Не ограничивайся дислипидемией/);
   assert.match(prompt, /Не ставь диагноз/);
   assert.match(prompt, /Не назначай и не отменяй лечение/);
   assert.match(prompt, /Российскую рекомендацию поиск не нашёл/);

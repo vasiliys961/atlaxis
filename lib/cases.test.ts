@@ -86,7 +86,8 @@ test("simple blank extracts facts and stays a reference", async () => {
   assert.equal(report.conflicts.length, 0);
   assert.equal(report.catalog?.every((item) => item.origin === "offered"), true);
   assert.equal(report.catalog?.some((item) => item.place === "Европа" && item.version === "2025"), true);
-  assert.equal(report.catalog?.some((item) => item.place === "США" && item.version === "2018"), true);
+  assert.equal(report.catalog?.some((item) => item.place === "США" && item.version === "2026"), true);
+  assert.equal(report.catalog?.some((item) => item.version === "2018" || item.version === "2019"), false);
   assert.match(report.guidelineNote, /европейские и американские/);
   assert.match(report.guidelineNote, /Пометка/);
   const offered = report.catalog?.find((item) => item.version === "2025");
@@ -149,9 +150,7 @@ test("guideline target is shown with a mark and stays out of the lab lines", asy
   assert.equal(current?.targetValue, "1.8");
   assert.equal(current?.targetUnit, "ммоль/л");
   assert.match(current ? targetMark(current) : "", /не личная цель/);
-  assert.equal(report.catalog?.some((item) => item.version === "2018"), false);
-  assert.equal(report.catalog?.find((item) => item.version === "2019")?.standing, "kept");
-  assert.match(report.catalog?.find((item) => item.version === "2019")?.url ?? "", /^https:\/\/doi\.org\//);
+  assert.equal(report.catalog?.some((item) => item.version === "2018" || item.version === "2019"), false);
   assert.doesNotMatch([...report.themes, ...report.changes, ...report.conflicts].map((item) => item.body).join("\n"), /1\.8/);
   assert.match(report.guidelineNote, /Пометка/);
   assert.match(report.guidelineNote, /актуальной не считается/);

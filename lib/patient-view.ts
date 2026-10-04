@@ -1,5 +1,5 @@
 import { CLUSTERS, describeAxes } from "./catalog";
-import { guidelinesFor } from "./guidelines";
+import { currentGuidelines } from "./guidelines";
 import { owned } from "./guard";
 import { publishReport } from "./publish";
 import { withOwner } from "./store";
@@ -32,7 +32,7 @@ export function clusterView(state: OwnerState) {
 }
 
 export function evidenceView(region: OwnerState["region"]) {
-  return guidelinesFor(region).map((item) => ({
+  return currentGuidelines(region).map((item) => ({
     id: item.id,
     organization: item.organization,
     title: item.title,
