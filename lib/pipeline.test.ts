@@ -84,7 +84,15 @@ test("blank contradiction, dose split and trend", () => {
   assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /референс этого же бланка/);
   assert.match(report.questions.join("\n"), /Вопрос врачу: .+референс этого же бланка/);
-  assert.equal(state.facts.find((fact) => fact.concept === "HGB")?.status, "conflicting");
+  const hemoglobin = state.facts.find((fact) => fact.concept === "HGB");
+  assert.equal(hemoglobin?.status, "conflicting");
+  const issue = state.issues[0];
+  if (hemoglobin && issue) {
+    issue.line = 999;
+    issue.excerpt = hemoglobin.excerpt;
+    buildReport(state);
+    assert.equal(hemoglobin.status, "conflicting");
+  }
   assert.equal(report.changes.find((item) => item.title === "ЛПНП")?.body.startsWith("4.8 ммоль/л (2024-03-12), затем 3.1"), true);
   assert.match(report.headline, /измерен/);
   assert.match(report.guidelineNote, /версия 2025/);

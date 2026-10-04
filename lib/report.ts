@@ -87,7 +87,9 @@ function classifyFacts(state: OwnerState): void {
   for (const issue of state.issues) {
     for (const fact of state.facts) {
       if (fact.documentId !== issue.documentId) continue;
-      if (fact.line === issue.line || fact.line === issue.otherLine) disputed.add(fact.id);
+      const sameLine = fact.line === issue.line || fact.line === issue.otherLine;
+      const sameExcerpt = Boolean(fact.excerpt) && (fact.excerpt === issue.excerpt || fact.excerpt === issue.otherExcerpt);
+      if (sameLine || sameExcerpt) disputed.add(fact.id);
     }
   }
   for (const fact of state.facts) {
