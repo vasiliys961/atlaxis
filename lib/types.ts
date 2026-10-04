@@ -93,7 +93,7 @@ export type ReportView = {
   intro: string;
   documents: { id: string; name: string; statusLabel: string; note: string }[];
   guidelineNote: string;
-  catalog?: { organization: string; title: string; version: string; publicationDate: string; standing: "current" | "kept"; url?: string; population?: string }[];
+  catalog?: { organization: string; title: string; version: string; publicationDate: string; standing: "current" | "kept"; origin: "selected" | "offered"; place: string; url?: string; population?: string; targetValue?: string; targetUnit?: string }[];
   guidelineSearch?: string;
   themes: ReportBlock[];
   changes: ReportBlock[];

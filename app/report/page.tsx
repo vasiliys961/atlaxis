@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { targetMark } from "@/lib/guidelines";
 import { BRAIN_MODELS, EYES_MODEL, SONAR_MODEL } from "@/lib/models";
 import type { ReportBlock, ReportView } from "@/lib/types";
 
@@ -250,12 +251,19 @@ export default function ReportPage() {
       <section className="section">
         <h2>Какие рекомендации смотрели</h2>
         <p>{report.guidelineNote}</p>
-        {report.catalog?.map((item) => (
-          <p key={`${item.organization}-${item.version}`} className="quiet">
-            {item.standing === "current" ? "Рабочая запись каталога" : "В каталоге сохранена и актуальной не считается"}: {item.organization}. {item.title}. Версия {item.version}, {item.publicationDate}.{item.population ? ` Группа в источнике: «${item.population}». Число этой группы в разбор не перенесено.` : ""}{item.url ? " " : ""}
-            {item.url ? <a href={item.url}>Источник</a> : null}
-          </p>
-        ))}
+        {report.catalog?.map((item) => {
+          const label = item.origin === "offered"
+            ? `${item.standing === "current" ? "Предложена" : "Предложена и актуальной не считается"}: ${item.place}`
+            : item.standing === "current"
+              ? "Рабочая запись каталога"
+              : "В каталоге сохранена и актуальной не считается";
+          return (
+            <p key={`${item.place}-${item.organization}-${item.version}`} className="quiet">
+              {label}. {item.organization}. {item.title}. Версия {item.version}, {item.publicationDate}. {targetMark(item)}{item.url ? " " : ""}
+              {item.url ? <a href={item.url}>Источник</a> : null}
+            </p>
+          );
+        })}
         {report.guidelineSearch ? (
           <article className="note">
             <h3>Что нашёл Sonar</h3>

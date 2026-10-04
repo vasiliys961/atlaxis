@@ -1,3 +1,4 @@
+import { catalogEntries, targetMark } from "./guidelines";
 import { BRAIN_MODELS } from "./models";
 import { polzaKey, polzaText } from "./polza";
 import { decideProcessing } from "./policy";
@@ -25,6 +26,7 @@ function dossier(report: ReportView): string {
     report.headline,
     report.intro,
     report.guidelineNote,
+    ...catalogEntries(report.region).map((item) => `${item.place}. ${item.organization}, версия ${item.version}. ${targetMark(item)}`),
     report.guidelineSearch ? `Найденные рекомендации:\n${report.guidelineSearch}` : "",
     ...report.themes.map((item) => `${item.title}\n${item.body}\n${(item.notes ?? []).map((note) => note.text).join("\n")}`),
     ...report.changes.map((item) => `${item.title}\n${item.body}`),
@@ -39,7 +41,8 @@ function dossier(report: ReportView): string {
 }
 
 export function acceptExplanation(candidate: string, state: OwnerState): boolean {
-  return acceptWording(candidate, state, state.report?.guidelineSearch ?? "") && !TREATMENT.test(candidate);
+  const cited = [state.report?.guidelineSearch ?? "", ...catalogEntries(state.region).map((item) => targetMark(item))].join("\n");
+  return acceptWording(candidate, state, cited) && !TREATMENT.test(candidate);
 }
 
 function priorTurns(chat: ChatTurn[]): string {

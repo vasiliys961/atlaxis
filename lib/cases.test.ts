@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { describeAxes } from "./catalog";
-import { guidelinesFor } from "./guidelines";
+import { guidelinesFor, targetMark } from "./guidelines";
 import { ingestFile, stageFile } from "./ingest";
 import { enqueueDocument, runNextJob } from "./queue";
 import { buildReport } from "./report";
@@ -52,7 +52,15 @@ test("simple blank extracts facts and stays a reference", async () => {
   assert.equal(state.facts.some((fact) => fact.concept === "GLU"), true);
   assert.equal(report.status, "ready");
   assert.equal(report.conflicts.length, 0);
-  assert.deepEqual(report.catalog, []);
+  assert.equal(report.catalog?.every((item) => item.origin === "offered"), true);
+  assert.equal(report.catalog?.some((item) => item.place === "Европа" && item.version === "2025"), true);
+  assert.equal(report.catalog?.some((item) => item.place === "США" && item.version === "2018"), true);
+  assert.match(report.guidelineNote, /европейские и американские/);
+  assert.match(report.guidelineNote, /Пометка/);
+  const offered = report.catalog?.find((item) => item.version === "2025");
+  assert.equal(offered?.targetValue, "1.8");
+  assert.match(offered ? targetMark(offered) : "", /не личная цель — 1\.8 ммоль\/л/);
+  assert.doesNotMatch(report.themes.map((item) => item.body).join("\n"), /1\.8/);
   assert.doesNotMatch(JSON.stringify(report), /сдайте|назначьте|диагноз\s*:/i);
 });
 
@@ -93,19 +101,23 @@ test("table and conclusion disagreement is shown", async () => {
   assert.match(JSON.stringify(report), /108/);
 });
 
-test("guideline target is stored and is not copied into the report", async () => {
+test("guideline target is shown with a mark and stays out of the lab lines", async () => {
   const state = await load(["ldl-2024.txt"], "EU");
   const report = buildReport(state);
   const target = guidelinesFor("EU").flatMap((item) => item.targets ?? []).find((item) => item.value === 1.8);
   assert.ok(target);
   assert.equal(target?.population.includes("very-high"), true);
-  assert.doesNotMatch(JSON.stringify(report), /1\.8/);
-  assert.equal(report.catalog?.find((item) => item.version === "2025")?.standing, "current");
-  assert.equal(report.catalog?.find((item) => item.version === "2025")?.population, "very-high cardiovascular risk");
+  const current = report.catalog?.find((item) => item.version === "2025");
+  assert.equal(current?.standing, "current");
+  assert.equal(current?.origin, "selected");
+  assert.equal(current?.targetValue, "1.8");
+  assert.equal(current?.targetUnit, "ммоль/л");
+  assert.match(current ? targetMark(current) : "", /не личная цель/);
+  assert.equal(report.catalog?.some((item) => item.version === "2018"), false);
   assert.equal(report.catalog?.find((item) => item.version === "2019")?.standing, "kept");
   assert.match(report.catalog?.find((item) => item.version === "2019")?.url ?? "", /^https:\/\/doi\.org\//);
-  assert.doesNotMatch(JSON.stringify(report.catalog), /1\.8|ммоль/);
-  assert.match(report.guidelineNote, /не сопоставлен/);
+  assert.doesNotMatch([...report.themes, ...report.changes, ...report.conflicts].map((item) => item.body).join("\n"), /1\.8/);
+  assert.match(report.guidelineNote, /Пометка/);
   assert.match(report.guidelineNote, /актуальной не считается/);
   assert.match(report.guidelineNote, /версия 2025/);
 });

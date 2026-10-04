@@ -54,20 +54,47 @@ export type CatalogEntry = {
   version: string;
   publicationDate: string;
   standing: "current" | "kept";
+  origin: "selected" | "offered";
+  place: string;
   url?: string;
   population?: string;
+  targetValue?: string;
+  targetUnit?: string;
 };
 
-export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
-  return guidelinesFor(region).map((item) => ({
+function toEntry(item: Guideline, origin: CatalogEntry["origin"]): CatalogEntry {
+  const place = item.region === "EU" ? "Европа" : item.region === "US" ? "США" : "Россия";
+  return {
     organization: item.organization,
     title: item.title,
     version: item.version,
     publicationDate: item.publicationDate,
     standing: item.supersededBy ? "kept" : "current",
+    origin,
+    place,
     ...(item.url ? { url: item.url } : {}),
-    ...(item.targets?.[0]?.population ? { population: item.targets[0].population } : {}),
-  }));
+    ...(item.targets?.[0]
+      ? {
+          population: item.targets[0].population,
+          targetValue: String(item.targets[0].value),
+          targetUnit: item.targets[0].unit,
+        }
+      : {}),
+  };
+}
+
+export function targetMark(item: CatalogEntry): string {
+  if (item.targetValue && item.targetUnit && item.population) {
+    return `Пометка: цель источника для группы «${item.population}», не личная цель — ${item.targetValue} ${item.targetUnit}.`;
+  }
+  if (item.standing === "current") return "В этой записи числовой цели нет.";
+  return "";
+}
+
+export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
+  const own = guidelinesFor(region);
+  if (own.length > 0) return own.map((item) => toEntry(item, "selected"));
+  return [...guidelinesFor("EU"), ...guidelinesFor("US")].map((item) => toEntry(item, "offered"));
 }
 
 export function guidelineSentence(region: Guideline["region"]): string {
@@ -75,12 +102,12 @@ export function guidelineSentence(region: Guideline["region"]): string {
   const all = guidelinesFor(region);
   const current = currentGuidelines(region);
   if (all.length === 0) {
-    return `Для ${regionName} в каталоге этой поставки нет записи, которую можно процитировать. Целевой показатель в выбранном источнике не сопоставлен.`;
+    return `Для ${regionName} в каталоге этой поставки нет записи, которую можно процитировать. Ниже предложены европейские и американские записи этого же каталога. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.`;
   }
   const used = current.map((item) => `${item.organization}, ${item.title}, версия ${item.version}`).join("; ");
   const older = all.filter((item) => item.supersededBy);
   const olderNote = older.length > 0
     ? ` Более ранняя версия ${older.map((item) => item.version).join(", ")} в каталоге сохранена и актуальной не считается.`
     : "";
-  return `Разбор смотрит каталог для ${regionName}: ${used}.${olderNote} Целевой показатель в выбранном источнике не сопоставлен: в документах не указана группа, для которой источник задаёт число.`;
+  return `Разбор смотрит каталог для ${regionName}: ${used}.${olderNote} Пометка: число цели, если оно есть в записи, относится к группе из источника и не является личной целью.`;
 }
