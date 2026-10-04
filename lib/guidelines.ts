@@ -54,6 +54,8 @@ export type CatalogEntry = {
   version: string;
   publicationDate: string;
   standing: "current" | "kept";
+  url?: string;
+  population?: string;
 };
 
 export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
@@ -63,5 +65,22 @@ export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
     version: item.version,
     publicationDate: item.publicationDate,
     standing: item.supersededBy ? "kept" : "current",
+    ...(item.url ? { url: item.url } : {}),
+    ...(item.targets?.[0]?.population ? { population: item.targets[0].population } : {}),
   }));
+}
+
+export function guidelineSentence(region: Guideline["region"]): string {
+  const regionName = region === "RU" ? "России" : region === "EU" ? "Европы" : "США";
+  const all = guidelinesFor(region);
+  const current = currentGuidelines(region);
+  if (all.length === 0) {
+    return `Для ${regionName} в каталоге этой поставки нет записи, которую можно процитировать. Целевой показатель в выбранном источнике не сопоставлен.`;
+  }
+  const used = current.map((item) => `${item.organization}, ${item.title}, версия ${item.version}`).join("; ");
+  const older = all.filter((item) => item.supersededBy);
+  const olderNote = older.length > 0
+    ? ` Более ранняя версия ${older.map((item) => item.version).join(", ")} в каталоге сохранена и актуальной не считается.`
+    : "";
+  return `Разбор смотрит каталог для ${regionName}: ${used}.${olderNote} Целевой показатель в выбранном источнике не сопоставлен: в документах не указана группа, для которой источник задаёт число.`;
 }

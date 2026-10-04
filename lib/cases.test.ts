@@ -33,6 +33,7 @@ test("a file can sit in the queue before it is read", async () => {
     const bytes = await readFile(path.join(root, "simple.txt"));
     const staged = await stageFile(state, dir, "simple.txt", bytes);
     assert.equal(staged.status, "queued");
+    assert.equal(staged.statusLabel, "Разбирается");
     assert.equal(state.facts.length, 0);
     enqueueDocument(state, staged.id, staged.fileName);
     assert.equal(await runNextJob(state, dir), true);
@@ -100,8 +101,11 @@ test("guideline target is stored and is not copied into the report", async () =>
   assert.equal(target?.population.includes("very-high"), true);
   assert.doesNotMatch(JSON.stringify(report), /1\.8/);
   assert.equal(report.catalog?.find((item) => item.version === "2025")?.standing, "current");
+  assert.equal(report.catalog?.find((item) => item.version === "2025")?.population, "very-high cardiovascular risk");
   assert.equal(report.catalog?.find((item) => item.version === "2019")?.standing, "kept");
-  assert.doesNotMatch(JSON.stringify(report.catalog), /very-high|ммоль/);
+  assert.match(report.catalog?.find((item) => item.version === "2019")?.url ?? "", /^https:\/\/doi\.org\//);
+  assert.doesNotMatch(JSON.stringify(report.catalog), /1\.8|ммоль/);
+  assert.match(report.guidelineNote, /не сопоставлен/);
   assert.match(report.guidelineNote, /актуальной не считается/);
   assert.match(report.guidelineNote, /версия 2025/);
 });

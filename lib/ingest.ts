@@ -127,7 +127,7 @@ async function acceptFile(
   const queued: MedicalDocument = {
     ...base,
     status: "queued",
-    statusLabel: "В очереди",
+    statusLabel: "Разбирается",
     note: "Файл принят. Чтение идёт отдельно и не держит отправку.",
   };
   state.documents.push(queued);

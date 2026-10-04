@@ -252,13 +252,14 @@ export default function ReportPage() {
         <p>{report.guidelineNote}</p>
         {report.catalog?.map((item) => (
           <p key={`${item.organization}-${item.version}`} className="quiet">
-            {item.standing === "current" ? "Рабочая запись каталога" : "В каталоге сохранена и актуальной не считается"}: {item.organization}. {item.title}. Версия {item.version}, {item.publicationDate}.
+            {item.standing === "current" ? "Рабочая запись каталога" : "В каталоге сохранена и актуальной не считается"}: {item.organization}. {item.title}. Версия {item.version}, {item.publicationDate}.{item.population ? ` Группа в источнике: «${item.population}». Число этой группы в разбор не перенесено.` : ""}{item.url ? " " : ""}
+            {item.url ? <a href={item.url}>Источник</a> : null}
           </p>
         ))}
         {report.guidelineSearch ? (
           <article className="note">
             <h3>Что нашёл Sonar</h3>
-            <p>{report.guidelineSearch}</p>
+            <p>{plain(report.guidelineSearch)}</p>
             <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
           </article>
         ) : null}

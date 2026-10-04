@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { AXES } from "./catalog";
-import { catalogEntries, currentGuidelines, guidelinesFor } from "./guidelines";
+import { catalogEntries, guidelineSentence, guidelinesFor } from "./guidelines";
 import { PIPELINE_VERSION, type MedicalFact, type OwnerState, type ReportBlock, type ReportView, type SourceRef } from "./types";
 
 function periodLinks(state: OwnerState): ReportBlock[] {
@@ -114,19 +114,7 @@ function physicianQuestions(conflicts: ReportBlock[], gaps: string[]): string[] 
 }
 
 function guidelineNote(state: OwnerState): string {
-  const regionName = state.region === "RU" ? "России" : state.region === "EU" ? "Европы" : "США";
-  const all = guidelinesFor(state.region);
-  const current = currentGuidelines(state.region);
-  if (all.length === 0) {
-    return `Для ${regionName} в каталоге этой поставки нет записи, которую можно процитировать. Целевые показатели не подставлены.`;
-  }
-  const used = current.map((item) => `${item.organization}, ${item.title}, версия ${item.version}`).join("; ");
-  const older = all.filter((item) => item.supersededBy);
-  const olderNote =
-    older.length > 0
-      ? ` Более ранняя версия ${older.map((item) => item.version).join(", ")} в каталоге сохранена и актуальной не считается.`
-      : "";
-  return `Разбор смотрит каталог для ${regionName}: ${used}.${olderNote} Числовой цели в отчёте нет: в документах не указана группа, для которой источник задаёт цель.`;
+  return guidelineSentence(state.region);
 }
 
 function trends(state: OwnerState): ReportBlock[] {
