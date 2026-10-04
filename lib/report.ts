@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { AXES } from "./catalog";
-import { currentGuidelines, guidelinesFor } from "./guidelines";
+import { catalogEntries, currentGuidelines, guidelinesFor } from "./guidelines";
 import { PIPELINE_VERSION, type MedicalFact, type OwnerState, type ReportBlock, type ReportView, type SourceRef } from "./types";
 
 function periodLinks(state: OwnerState): ReportBlock[] {
@@ -335,6 +335,7 @@ export function buildReport(state: OwnerState): ReportView {
       intro: state.documents.length === 0 ? "Загрузите бланк, выписку или откройте пример." : `Файлы сохранены, но строк с показателями в них не нашлось.${pictureNote}`,
       documents,
       guidelineNote: guidelineNote(state),
+      catalog: catalogEntries(state.region),
       themes: [],
       changes: [],
       conflicts: [],
@@ -417,6 +418,7 @@ export function buildReport(state: OwnerState): ReportView {
     ].filter(Boolean).join(" "),
     documents,
     guidelineNote: guidelineNote(state),
+    catalog: catalogEntries(state.region),
     themes,
     changes: changeBlocks,
     conflicts: conflictBlocks,

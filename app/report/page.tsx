@@ -250,6 +250,11 @@ export default function ReportPage() {
       <section className="section">
         <h2>Какие рекомендации смотрели</h2>
         <p>{report.guidelineNote}</p>
+        {report.catalog?.map((item) => (
+          <p key={`${item.organization}-${item.version}`} className="quiet">
+            {item.standing === "current" ? "Рабочая запись каталога" : "В каталоге сохранена и актуальной не считается"}: {item.organization}. {item.title}. Версия {item.version}, {item.publicationDate}.
+          </p>
+        ))}
         {report.guidelineSearch ? (
           <article className="note">
             <h3>Что нашёл Sonar</h3>

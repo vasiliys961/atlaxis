@@ -51,6 +51,7 @@ test("simple blank extracts facts and stays a reference", async () => {
   assert.equal(state.facts.some((fact) => fact.concept === "GLU"), true);
   assert.equal(report.status, "ready");
   assert.equal(report.conflicts.length, 0);
+  assert.deepEqual(report.catalog, []);
   assert.doesNotMatch(JSON.stringify(report), /сдайте|назначьте|диагноз\s*:/i);
 });
 
@@ -98,6 +99,9 @@ test("guideline target is stored and is not copied into the report", async () =>
   assert.ok(target);
   assert.equal(target?.population.includes("very-high"), true);
   assert.doesNotMatch(JSON.stringify(report), /1\.8/);
+  assert.equal(report.catalog?.find((item) => item.version === "2025")?.standing, "current");
+  assert.equal(report.catalog?.find((item) => item.version === "2019")?.standing, "kept");
+  assert.doesNotMatch(JSON.stringify(report.catalog), /very-high|ммоль/);
   assert.match(report.guidelineNote, /актуальной не считается/);
   assert.match(report.guidelineNote, /версия 2025/);
 });

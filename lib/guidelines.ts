@@ -47,3 +47,21 @@ export function guidelinesFor(region: Guideline["region"]): Guideline[] {
 export function currentGuidelines(region: Guideline["region"]): Guideline[] {
   return guidelinesFor(region).filter((item) => !item.supersededBy);
 }
+
+export type CatalogEntry = {
+  organization: string;
+  title: string;
+  version: string;
+  publicationDate: string;
+  standing: "current" | "kept";
+};
+
+export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
+  return guidelinesFor(region).map((item) => ({
+    organization: item.organization,
+    title: item.title,
+    version: item.version,
+    publicationDate: item.publicationDate,
+    standing: item.supersededBy ? "kept" : "current",
+  }));
+}

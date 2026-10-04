@@ -3,6 +3,7 @@ import path from "path";
 import { audit } from "@/lib/audit";
 import { ownerId } from "@/lib/owner";
 import { stageFile } from "@/lib/ingest";
+import { catalogEntries } from "@/lib/guidelines";
 import { listedDocuments, reportNeedsRefresh } from "@/lib/publish";
 import { continueAfterResponse, drainOwner, enqueueDocument, reportPending } from "@/lib/queue";
 import { withOwner } from "@/lib/store";
@@ -16,7 +17,7 @@ export async function GET() {
     const payload = await withOwner(id, async (state) => ({
       region: state.region,
       documents: listedDocuments(state),
-      report: state.report,
+      report: state.report ? { ...state.report, catalog: catalogEntries(state.region) } : null,
       pending: reportPending(state),
       refreshing: reportNeedsRefresh(state),
     }));
