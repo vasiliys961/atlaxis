@@ -1,7 +1,5 @@
 import { randomBytes } from "crypto";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import path from "path";
-import { dataRoot } from "./data-root";
+import { readText, writeText } from "./files";
 
 const TTL_MS = 2 * 60 * 60 * 1000;
 const ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
@@ -16,9 +14,7 @@ type PhoneFile = {
   links: PhoneLink[];
 };
 
-function filePath(): string {
-  return path.join(dataRoot(), "_phone", "links.json");
-}
+const LINKS_KEY = "_phone/links.json";
 let chain: Promise<unknown> = Promise.resolve();
 
 function code(): string {
@@ -28,7 +24,9 @@ function code(): string {
 
 async function readLinks(): Promise<PhoneLink[]> {
   try {
-    const parsed = JSON.parse(await readFile(filePath(), "utf8")) as PhoneFile;
+    const raw = await readText(LINKS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PhoneFile;
     return Array.isArray(parsed.links) ? parsed.links : [];
   } catch {
     return [];
@@ -36,8 +34,7 @@ async function readLinks(): Promise<PhoneLink[]> {
 }
 
 async function writeLinks(links: PhoneLink[]): Promise<void> {
-  await mkdir(path.dirname(filePath()), { recursive: true });
-  await writeFile(filePath(), JSON.stringify({ links }));
+  await writeText(LINKS_KEY, JSON.stringify({ links }));
 }
 
 function fresh(links: PhoneLink[]): PhoneLink[] {

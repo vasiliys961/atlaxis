@@ -1,5 +1,6 @@
 import { writeFile } from "fs/promises";
 import path from "path";
+import { writeBinary } from "./files";
 import { anonymizeText } from "./anonymize";
 import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
@@ -96,6 +97,7 @@ export async function ingestFile(
   }
 
   await writeFile(path.join(dir, `${id}.bin`), bytes);
+  await writeBinary(`${path.basename(dir)}/${id}.bin`, bytes);
 
   if (IMAGE_EXT.has(ext) || ext === "dcm" || ext === "dicom") {
     if (IMAGE_EXT.has(ext)) {

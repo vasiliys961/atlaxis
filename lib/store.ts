@@ -1,6 +1,7 @@
-import { mkdir, readFile, rm, writeFile } from "fs/promises";
+import { mkdir } from "fs/promises";
 import path from "path";
 import { dataRoot } from "./data-root";
+import { readText, removePrefix, writeText } from "./files";
 import { dropPhoneLinks } from "./phone-link";
 import { emptyState, type OwnerState } from "./types";
 
@@ -15,10 +16,12 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
   const run = previous.then(async () => {
     const dir = root(ownerId);
     await mkdir(dir, { recursive: true });
-    const statePath = path.join(dir, "state.json");
+    const stateKey = `${ownerId}/state.json`;
     let state = emptyState();
     try {
-      const saved = JSON.parse(await readFile(statePath, "utf8")) as Partial<OwnerState>;
+      const raw = await readText(stateKey);
+      if (!raw) throw new Error("empty");
+      const saved = JSON.parse(raw) as Partial<OwnerState>;
       state = { ...emptyState(), ...saved };
       state.documents ??= [];
       state.facts ??= [];
@@ -33,7 +36,7 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
       state = emptyState();
     }
     const result = await task(state, dir);
-    await writeFile(statePath, JSON.stringify(state));
+    await writeText(stateKey, JSON.stringify(state));
     return result;
   });
   locks.set(ownerId, run.then(() => undefined, () => undefined));
@@ -51,7 +54,8 @@ export async function deleteOwner(ownerId: string): Promise<void> {
     state.reviews = [];
     state.jobs = [];
     state.audit = [];
+    state.chat = [];
   });
-  await rm(root(ownerId), { recursive: true, force: true });
+  await removePrefix(`${ownerId}/`);
   await dropPhoneLinks(ownerId);
 }

@@ -10,6 +10,7 @@
     "mcp:doctor-opus": "node --import tsx mcp/doctor-opus/server.ts"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "next": "^14.2.15",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
