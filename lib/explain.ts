@@ -20,10 +20,16 @@ export const EXPLAIN_SYSTEM = `Ты отвечаешь с компетенцие
 
 const TREATMENT = /ставлю диагноз|ваш диагноз|это диагноз|назначаю|принимайте|отмените|схема лечения|терапевтическ(?:ая|ую) доз/i;
 const FINDING_MARK = "Обсудить находку:";
+const SHEET_MARK = "Обсудить весь разбор:";
 
 export function findingBrief(question: string): string {
   if (!question.startsWith(FINDING_MARK)) return "";
   return "Это одна находка с листа. Поясни только её: что записано, какой референс рядом и какая отметка уже стоит в строке. Числа повторяй только из находки и из сведений. Новую разницу, процент, диагноз и назначение не добавляй.";
+}
+
+export function sheetBrief(question: string): string {
+  if (!question.startsWith(SHEET_MARK)) return "";
+  return "Это весь лист, не одна строка. Объясни, как читать комплект вместе: что записано, как менялось между датами, где две записи об одном и том же не сходятся, чего в комплекте нет и какие вопросы уже стоят для врача. Причину не называй. Диагноз, лечение и новые числа не добавляй.";
 }
 
 function dossier(report: ReportView): string {
@@ -87,7 +93,9 @@ async function explain(state: OwnerState, question: string): Promise<string> {
       if (saved?.notes?.length) theme.notes = saved.notes;
     }
   }
-  const brief = findingBrief(question);
+  const finding = findingBrief(question);
+  const sheet = sheetBrief(question);
+  const brief = finding || sheet;
   const prompt = `${EXPLAIN_SYSTEM}
 
 Сведения из документов:
@@ -108,9 +116,11 @@ ${question}`;
   } catch {
     if (first.id === OPUS.id && !brief) return "Не удалось получить разъяснение. Вопрос остался здесь, наружу ушли только уже собранные сведения.";
   }
-  const reviewPrompt = brief
+  const reviewPrompt = finding
     ? `${prompt}\n\nПрошлое пояснение не показано. Напиши заново три или четыре предложения только по этой находке. Без диагноза, без назначения, без новой разницы и без процента.`
-    : prompt;
+    : sheet
+      ? `${prompt}\n\nПрошлое пояснение не показано. Напиши заново, как читать весь лист вместе. Без диагноза, без назначения, без причины и без новых чисел.`
+      : prompt;
   try {
     const review = await polzaText(OPUS.id, reviewPrompt, 2200);
     return acceptExplanation(review, state)

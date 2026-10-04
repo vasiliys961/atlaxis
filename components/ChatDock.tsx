@@ -90,6 +90,17 @@ export function ChatDock() {
 
   if (pathname.startsWith("/phone") || pathname.startsWith("/review")) return null;
 
+  async function clearChat() {
+    setError("");
+    const response = await fetch("/api/chat", { method: "DELETE" });
+    const body = await response.json();
+    if (!response.ok) {
+      setError(body.error ?? "Не удалось очистить переписку.");
+      return;
+    }
+    setMessages([]);
+  }
+
   async function send(event: React.FormEvent) {
     event.preventDefault();
     const message = draft.trim();
@@ -108,15 +119,18 @@ export function ChatDock() {
         </span>
         <div>
           <h2>Профессор</h2>
-          <p>Кнопка «Профессору» у находки отправляет её сюда. Пояснение без диагноза и без лечения.</p>
+          <p>Сюда можно отправить одну находку или весь разбор. Пояснение без диагноза и без лечения.</p>
         </div>
-        <button className="secondary" type="button" onClick={() => setCollapsed((value) => !value)}>
-          {collapsed ? "Открыть" : "Свернуть"}
-        </button>
+        <div className="professor-actions">
+          <button className="danger" type="button" onClick={() => void clearChat()} disabled={pending || messages.length === 0}>Очистить чат</button>
+          <button className="secondary" type="button" onClick={() => setCollapsed((value) => !value)}>
+            {collapsed ? "Открыть" : "Свернуть"}
+          </button>
+        </div>
       </header>
       <div className="chat-thread" ref={thread}>
         {messages.length === 0 ? (
-          <p className="chat-answer">Здравствуйте. Находку с листа можно отправить кнопкой «Профессору». Я поясню, что в ней записано, без диагноза и без лечения.</p>
+          <p className="chat-answer">Здравствуйте. Одну строку отправляет кнопка «Профессору». Весь лист — кнопка «Весь разбор профессору». Я поясню, что уже записано, без диагноза и без лечения.</p>
         ) : null}
         {messages.map((item) => (
           <p key={`${item.at}-${item.role}-${item.text.slice(0, 24)}`} className={item.role === "user" ? "chat-user" : "chat-answer"}>

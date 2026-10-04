@@ -22,6 +22,7 @@ export function routeQuestion(question: string): ChatRoute {
   const text = question.trim();
   if (MED_CHANGE.test(text)) return "safety_meds";
   if (EMERGENCY.test(text)) return "safety_urgent";
+  if (text.startsWith("Обсудить весь разбор:")) return "sonnet";
   if (HARD.test(text)) return "opus";
   if (ORDINARY.test(text)) return "sonnet";
   return "luna";

@@ -13,3 +13,14 @@ export function discussFinding(text: string): void {
   if (!message || typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent<string>(DISCUSS_EVENT, { detail: message }));
 }
+
+const SHEET = "Обсудить весь разбор: ";
+
+export function sheetQuestion(): string {
+  return `${SHEET}Как читать весь комплект вместе: что записано, как это менялось, где записи не сходятся и чего в комплекте нет.`;
+}
+
+export function discussSheet(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<string>(DISCUSS_EVENT, { detail: sheetQuestion() }));
+}

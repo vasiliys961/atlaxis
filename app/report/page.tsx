@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { discussFinding } from "@/lib/discuss";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { discussFinding, discussSheet } from "@/lib/discuss";
 import { targetMark } from "@/lib/guidelines";
 import { patientFileNote } from "@/lib/patient-note";
 import { writerFor } from "@/lib/router";
@@ -123,9 +123,33 @@ function Statements({ block }: { block: ReportBlock }) {
   );
 }
 
+function ClearKit({ busy, onClear }: { busy: boolean; onClear: () => void }) {
+  return (
+    <button className="danger" type="button" onClick={onClear} disabled={busy}>
+      {busy ? "Очищаем…" : "Очистить"}
+    </button>
+  );
+}
+
 export default function ReportPage() {
   const [report, setReport] = useState<ReportView | null>(null);
   const [error, setError] = useState("");
+  const [clearing, setClearing] = useState(false);
+  const gone = useRef(false);
+
+  async function clearKit() {
+    gone.current = true;
+    setClearing(true);
+    setError("");
+    const response = await fetch("/api/privacy/delete", { method: "POST" });
+    if (!response.ok) {
+      gone.current = false;
+      setClearing(false);
+      setError("Не удалось очистить разбор.");
+      return;
+    }
+    window.location.assign("/");
+  }
 
   useEffect(() => {
     let stop = false;
@@ -135,11 +159,12 @@ export default function ReportPage() {
         const response = await fetch("/api/documents");
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? "Не удалось собрать разбор.");
-        if (stop) return;
+        if (stop || gone.current) return;
         if (body.report) setReport(body.report as ReportView);
+        else if (!body.pending && !body.refreshing) setReport({ status: "empty" } as ReportView);
         if (body.pending || body.refreshing) timer = window.setTimeout(() => void pull(), 2500);
       } catch (reason) {
-        if (!stop) setError(reason instanceof Error ? reason.message : "Не удалось собрать разбор.");
+        if (!stop && !gone.current) setError(reason instanceof Error ? reason.message : "Не удалось собрать разбор.");
       }
     }
     void pull();
@@ -150,7 +175,15 @@ export default function ReportPage() {
   }, []);
 
   if (error) return <p className="error">{error}</p>;
-  if (!report) return <p className="quiet">Собираем разбор…</p>;
+  if (!report) {
+    return (
+      <article className="sheet">
+        <p className="quiet">Собираем разбор…</p>
+        <p className="quiet">Если на экране остался прошлый комплект, его можно стереть. Файлы, лист и переписка с профессором удалятся.</p>
+        <ClearKit busy={clearing} onClear={() => void clearKit()} />
+      </article>
+    );
+  }
 
   if (report.status === "empty") {
     return (
@@ -158,7 +191,10 @@ export default function ReportPage() {
         <p className="kicker">Разбор</p>
         <h1>Сначала нужны <em>документы</em></h1>
         <p className="lead">Загрузите бланк. Здесь будет один текст: что нашлось, как это менялось и где записи не сходятся.</p>
-        <p><Link className="button" href="/">К документам</Link></p>
+        <p className="sheet-ask">
+          <Link className="button" href="/">К документам</Link>
+          <ClearKit busy={clearing} onClear={() => void clearKit()} />
+        </p>
       </article>
     );
   }
@@ -170,6 +206,13 @@ export default function ReportPage() {
         <h1>Что говорят <em>ваши записи</em></h1>
         <p className="lead">{report.headline}</p>
         <p className="quiet">{report.intro}</p>
+        {report.status === "ready" ? (
+          <p className="sheet-ask">
+            <button type="button" className="secondary" onClick={() => discussSheet()}>Весь разбор профессору</button>
+            <ClearKit busy={clearing} onClear={() => void clearKit()} />
+            <span className="quiet">Кнопка у строки отправляет одну находку. «Весь разбор профессору» отправляет лист целиком. «Очистить» стирает файлы, лист и переписку.</span>
+          </p>
+        ) : null}
       </header>
 
       {report.status === "blocked" ? (

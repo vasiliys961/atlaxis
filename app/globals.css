@@ -126,6 +126,8 @@ summary { cursor: pointer; }
 .finding-body { flex: 1; min-width: 0; }
 .finding-body > .fact, .finding-body > .question { margin-top: 0; }
 button.discuss { flex: none; margin-top: 2px; padding: 6px 12px; font-size: 13px; background: rgba(255, 252, 246, 0.92); color: var(--green-d); border: 1px solid var(--line); box-shadow: none; }
+.sheet-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 8px; }
+.sheet-ask .quiet { margin: 0; max-width: 42rem; }
 .fact { margin: 0 0 10px; }
 .fact > summary { color: var(--ink); }
 .fact > summary::after { content: " · источник"; color: var(--green); font-size: 0.82em; }
@@ -142,6 +144,7 @@ input, textarea, select { width: 100%; margin-top: 6px; border: 1px solid var(--
 
 .professor { position: fixed; top: 92px; right: 18px; z-index: 35; width: min(400px, calc(100vw - 24px)); height: min(640px, calc(100vh - 116px)); display: flex; flex-direction: column; padding: 18px; border-radius: 28px; background: rgba(255, 252, 246, 0.94); border: 1px solid rgba(255,255,255,.95); box-shadow: var(--shadow); backdrop-filter: blur(18px); }
 .professor header { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+.professor-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .professor h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 28px; letter-spacing: -0.02em; }
 .professor header p { margin: 2px 0 0; color: var(--ink-2); font-size: 13.5px; }
 .av { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, #ffe9b8, #f3b36b); box-shadow: 0 0 0 4px rgba(243, 179, 107, 0.28); }

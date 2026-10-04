@@ -4,10 +4,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { anonymizeText } from "./anonymize";
 import { AXES, CLUSTERS } from "./catalog";
-import { findingQuestion } from "./discuss";
+import { findingQuestion, sheetQuestion } from "./discuss";
 import { patientFileNote } from "./patient-note";
 import { askDoctorOpus } from "./doctor-opus";
-import { EXPLAIN_SYSTEM, acceptExplanation, findingBrief } from "./explain";
+import { EXPLAIN_SYSTEM, acceptExplanation, findingBrief, sheetBrief } from "./explain";
 import { guidelineSentence } from "./guidelines";
 import { acceptGuidelineSearch, guidelineSearchPrompt, RU_NOT_FOUND, settleRussianSearch, sonarFoundRussian } from "./guidelines-search";
 import { sanitizeImageReading } from "./image-json";
@@ -41,6 +41,7 @@ test("a calm theme goes to sonnet and a disputed one to opus", () => {
   assert.equal(routeQuestion("что значит глюкоза"), "sonnet");
   assert.equal(routeQuestion("почему доза другая"), "opus");
   assert.equal(routeQuestion("а это вообще серьёзно"), "luna");
+  assert.equal(routeQuestion(sheetQuestion()), "sonnet");
   assert.equal(readLuna("urgent"), "urgent");
   assert.equal(readLuna("ordinary question"), "ordinary");
 });
@@ -428,6 +429,12 @@ test("a finding becomes a professor question without a diagnosis request", () =>
   assert.match(brief, /одна находка/);
   assert.match(brief, /диагноз/);
   assert.equal(findingBrief("что значит это число"), "");
+  const sheet = sheetQuestion();
+  assert.match(sheet, /весь комплект/);
+  assert.match(sheetBrief(sheet), /весь лист/);
+  assert.match(sheetBrief(sheet), /Диагноз/);
+  assert.equal(sheetBrief(findingQuestion("гемоглобин 108 г/л")), "");
+  assert.equal(findingBrief(sheet), "");
 });
 
 test("chat explains findings and drops diagnosis or treatment", () => {

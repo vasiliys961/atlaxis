@@ -108,10 +108,22 @@ export async function drainOwner(ownerId: string): Promise<void> {
         await completeJob(state, prepared);
       });
     }
+    const draft = await withOwner(ownerId, async (state) => {
+      if (state.jobs.some((job) => job.status === "queued" || job.status === "running")) return null;
+      if (!reportNeedsRefresh(state)) return null;
+      return structuredClone(state);
+    });
+    if (!draft) return;
+    try {
+      await publishReport(draft);
+    } catch {
+      return;
+    }
     await withOwner(ownerId, async (state) => {
       if (state.jobs.some((job) => job.status === "queued" || job.status === "running")) return;
-      if (!reportNeedsRefresh(state)) return;
-      await publishReport(state);
+      if (buildReport(state).inputHash !== draft.report?.inputHash) return;
+      state.report = draft.report;
+      state.reports = draft.reports;
     });
   } finally {
     draining.delete(ownerId);
