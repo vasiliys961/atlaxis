@@ -15,6 +15,15 @@ import { extractPdfText } from "./pdf";
 import { buildReport, validateReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 
+test("dose keeps the written frequency and a broken date stays out", () => {
+  const parsed = parseDocument("Дата исследования: 2024-02-31\nАторвастатин 20 мг 1 раз в сутки\nГемоглобин 140 г/л");
+  assert.equal(parsed.studyDate, null);
+  assert.equal(parsed.facts[0]?.date, null);
+  assert.match(parsed.issues.map((item) => item.description).join(" "), /календарную/);
+  assert.equal(parsed.medications[0]?.dose, 20);
+  assert.equal(parsed.medications[0]?.frequency, "1 раз в сутки");
+});
+
 test("study date stays, contacts go away", () => {
   const result = anonymizeText("Иван Иванов\nEmail: ivan@example.com\nДата рождения: 12.04.1980\nДата исследования: 2024-03-12\nГемоглобин 108 г/л");
   assert.equal(result.leaked, false);

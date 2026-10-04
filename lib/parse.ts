@@ -35,7 +35,7 @@ const DATE_LINE = /дат[аы](?:\s+исследовани[\p{L}]+|\s+анал�
 const INSTRUCTION = /игнорируй предыдущ|ignore previous|поставь диагноз|you are now|системн[\p{L}]*\s+промпт/iu;
 const CONCLUSION = /заключен/i;
 const NORMAL_CLAIM = /в пределах нормы|показател\w+\s+в норме|\bнорма\b/i;
-const DOSE = /^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё-]{3,})\s+(\d+(?:[.,]\d+)?)\s*(мг|мкг|ме|ед)(?![\p{L}\p{N}])/iu;
+const DOSE = /^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё-]{3,})\s+(\d+(?:[.,]\d+)?)\s*(мг|мкг|ме|ед)(?:\s+(\d+\s+раз(?:а)?(?:\s+в\s+(?:день|сутки|неделю))?))?(?![\p{L}\p{N}])/iu;
 
 export type ParsedDocument = {
   studyDate: string | null;
@@ -46,10 +46,14 @@ export type ParsedDocument = {
 
 function isoDate(raw: string): string | null {
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const local = raw.match(/^(\d{2})[./](\d{2})[./](\d{4})$/);
-  if (!local) return null;
-  return `${local[3]}-${local[2]}-${local[1]}`;
+  const year = iso?.[1] ?? local?.[3];
+  const month = iso?.[2] ?? local?.[2];
+  const day = iso?.[3] ?? local?.[1];
+  if (!year || !month || !day) return null;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() + 1 !== Number(month) || date.getUTCDate() !== Number(day)) return null;
+  return `${year}-${month}-${day}`;
 }
 
 function numberFrom(raw: string): number {
@@ -80,7 +84,16 @@ export function parseDocument(text: string): ParsedDocument {
 
     const dated = line.match(DATE_LINE);
     if (dated?.[1]) {
-      studyDate = isoDate(dated[1]) ?? studyDate;
+      const parsedDate = isoDate(dated[1]);
+      if (!parsedDate) {
+        issues.push({
+          description: "Дата в строке не складывается в календарную. Она не подставлена.",
+          line: lineNo,
+          excerpt: line.slice(0, 180),
+        });
+      } else {
+        studyDate = parsedDate;
+      }
       return;
     }
 
@@ -149,6 +162,7 @@ export function parseDocument(text: string): ParsedDocument {
         dose: numberFrom(dose[2]),
         doseText: dose[2].replace(",", "."),
         unit: dose[3].toLowerCase(),
+        frequency: dose[4]?.toLowerCase(),
         date: studyDate,
         line: lineNo,
         excerpt: line,

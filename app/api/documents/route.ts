@@ -1,9 +1,10 @@
 import { readFile } from "fs/promises";
 import path from "path";
-import { audit, finishJob } from "@/lib/audit";
+import { audit } from "@/lib/audit";
 import { ownerId } from "@/lib/owner";
-import { ingestFile } from "@/lib/ingest";
-import { listedDocuments, publishReport } from "@/lib/publish";
+import { stageFile } from "@/lib/ingest";
+import { listedDocuments } from "@/lib/publish";
+import { continueAfterResponse, drainOwner, enqueueDocument, reportPending } from "@/lib/queue";
 import { withOwner } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -12,10 +13,13 @@ export const maxDuration = 60;
 export async function GET() {
   try {
     const id = ownerId();
-    const payload = await withOwner(id, async (state) => {
-      const report = await publishReport(state);
-      return { region: state.region, documents: listedDocuments(state), report };
-    });
+    const payload = await withOwner(id, async (state) => ({
+      region: state.region,
+      documents: listedDocuments(state),
+      report: state.report,
+      pending: reportPending(state),
+    }));
+    if (payload.pending) continueAfterResponse(drainOwner(id));
     return Response.json(payload);
   } catch {
     return Response.json({ error: "Не удалось открыть документы." }, { status: 400 });
@@ -32,14 +36,15 @@ export async function POST(request: Request) {
       const saved = [];
       for (const file of files) {
         const bytes = Buffer.from(await file.arrayBuffer());
-        const document = await ingestFile(state, dir, file.name, bytes);
+        const document = await stageFile(state, dir, file.name, bytes);
         audit(state, "upload", document.id);
-        finishJob(state, "PROCESS_DOCUMENT");
+        if (document.status === "queued") enqueueDocument(state, document.id, document.fileName);
         const { anonymizedText: _text, ...safe } = document;
         saved.push(safe);
       }
       return saved;
     });
+    continueAfterResponse(drainOwner(id));
     return Response.json({ documents });
   } catch {
     return Response.json({ error: "Не удалось принять файл." }, { status: 400 });
@@ -54,14 +59,15 @@ export async function PUT() {
       const saved = [];
       for (const name of fixtures) {
         const bytes = await readFile(path.join(process.cwd(), "fixtures", name));
-        const document = await ingestFile(state, dir, name, bytes);
+        const document = await stageFile(state, dir, name, bytes);
         audit(state, "upload", document.id);
-        finishJob(state, "PROCESS_DOCUMENT");
+        if (document.status === "queued") enqueueDocument(state, document.id, document.fileName);
         const { anonymizedText: _text, ...safe } = document;
         saved.push(safe);
       }
       return saved;
     });
+    continueAfterResponse(drainOwner(id));
     return Response.json({ documents });
   } catch {
     return Response.json({ error: "Не удалось открыть пример." }, { status: 400 });

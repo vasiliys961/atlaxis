@@ -1,9 +1,10 @@
-export const PIPELINE_VERSION = "2026-10-04.1";
+export const PIPELINE_VERSION = "2026-10-04.2";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
 
 export type DocumentStatus =
+  | "queued"
   | "ready"
   | "anonymization_unconfirmed"
   | "failed";
@@ -44,6 +45,7 @@ export type MedicationMention = {
   dose: number;
   doseText: string;
   unit: string;
+  frequency?: string;
   date: string | null;
   line: number;
   excerpt: string;
@@ -120,8 +122,10 @@ export type ReviewFinding = {
 export type JobRecord = {
   id: string;
   name: string;
-  status: "done";
+  status: "queued" | "running" | "done" | "failed";
   at: string;
+  documentId?: string;
+  origin?: "phone" | "computer";
 };
 
 export type ChatTurn = {

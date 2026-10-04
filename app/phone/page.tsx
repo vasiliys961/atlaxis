@@ -32,7 +32,7 @@ function PhoneUpload() {
       return;
     }
     const names = (body.documents ?? []).map((item: { fileName: string }) => item.fileName).join(", ");
-    setNote(names ? `${names} отправлены в разбор на компьютере. Числа со снимка не читаются.` : "Файл отправлен.");
+    setNote(names ? `${names} приняты и стоят в очереди. На компьютере они появятся в списке, как только чтение закончится.` : "Файл отправлен.");
   }
 
   return (

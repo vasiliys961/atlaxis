@@ -30,6 +30,9 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
       state.reports ??= [];
       state.reviews ??= [];
       state.jobs ??= [];
+      for (const job of state.jobs) {
+        if (job.status !== "queued" && job.status !== "running" && job.status !== "done" && job.status !== "failed") job.status = "done";
+      }
       state.audit ??= [];
       state.chat ??= [];
     } catch {

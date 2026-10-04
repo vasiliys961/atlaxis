@@ -1,7 +1,8 @@
-import { audit, finishJob } from "@/lib/audit";
-import { ingestFile } from "@/lib/ingest";
+import { audit } from "@/lib/audit";
+import { stageFile } from "@/lib/ingest";
 import { ownerId } from "@/lib/owner";
 import { createPhoneLink, ownerForCode } from "@/lib/phone-link";
+import { continueAfterResponse, drainOwner, enqueueDocument } from "@/lib/queue";
 import { withOwner } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -36,13 +37,14 @@ export async function POST(request: Request) {
       const saved = [];
       for (const file of files) {
         const bytes = Buffer.from(await file.arrayBuffer());
-        const document = await ingestFile(state, dir, file.name || "photo.jpg", bytes, "phone");
+        const document = await stageFile(state, dir, file.name || "photo.jpg", bytes);
         audit(state, "upload", document.id);
-        finishJob(state, "PROCESS_DOCUMENT");
+        if (document.status === "queued") enqueueDocument(state, document.id, document.fileName, "phone");
         saved.push({ fileName: document.fileName, statusLabel: document.statusLabel, note: document.note });
       }
       return saved;
     });
+    continueAfterResponse(drainOwner(owner));
     return Response.json({ documents });
   } catch {
     return Response.json({ error: "Не удалось принять файл со смартфона." }, { status: 400 });

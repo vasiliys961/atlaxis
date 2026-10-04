@@ -5,7 +5,8 @@ import path from "node:path";
 import test from "node:test";
 import { describeAxes } from "./catalog";
 import { guidelinesFor } from "./guidelines";
-import { ingestFile } from "./ingest";
+import { ingestFile, stageFile } from "./ingest";
+import { enqueueDocument, runNextJob } from "./queue";
 import { buildReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 
@@ -24,6 +25,24 @@ async function load(names: string[], region: OwnerState["region"] = "RU"): Promi
     await rm(dir, { recursive: true, force: true });
   }
 }
+
+test("a file can sit in the queue before it is read", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "atlaxis-"));
+  const state = emptyState();
+  try {
+    const bytes = await readFile(path.join(root, "simple.txt"));
+    const staged = await stageFile(state, dir, "simple.txt", bytes);
+    assert.equal(staged.status, "queued");
+    assert.equal(state.facts.length, 0);
+    enqueueDocument(state, staged.id, staged.fileName);
+    assert.equal(await runNextJob(state, dir), true);
+    assert.equal(staged.status, "ready");
+    assert.equal(state.jobs[0]?.status, "done");
+    assert.equal(state.facts.some((fact) => fact.concept === "HGB" && fact.value === 140), true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test("simple blank extracts facts and stays a reference", async () => {
   const state = await load(["simple.txt"]);

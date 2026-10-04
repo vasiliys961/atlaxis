@@ -40,6 +40,10 @@ function plural(count: number, one: string, few: string, many: string): string {
   return `${count} ${many}`;
 }
 
+function writtenDose(item: { doseText: string; unit: string; frequency?: string }): string {
+  return `${item.doseText} ${item.unit}${item.frequency ? `, ${item.frequency}` : ""}`;
+}
+
 function sourceFor(state: OwnerState, fact: MedicalFact): SourceRef {
   const document = state.documents.find((item) => item.id === fact.documentId);
   return {
@@ -130,7 +134,7 @@ function doseChanges(state: OwnerState): ReportBlock[] {
     if (!first) continue;
     blocks.push({
       title: "Смена дозы",
-      body: `Для «${first.name}» в разные даты записаны разные дозы: ${dated.map((item) => `${item.doseText} ${item.unit} (${item.date})`).join(", затем ")}. Это смена записи во времени, не спор об одной дате.`,
+      body: `Для «${first.name}» в разные даты записаны разные дозы: ${dated.map((item) => `${writtenDose(item)} (${item.date})`).join(", затем ")}. Это смена записи во времени, не спор об одной дате.`,
       sources: dated.map((item) => {
         const document = state.documents.find((doc) => doc.id === item.documentId);
         return {
@@ -195,7 +199,7 @@ function conflicts(state: OwnerState): ReportBlock[] {
     const first = list[0];
     if (!first) continue;
     if (clash.length > 0) {
-      const written = clash.map((item) => `${item.doseText} ${item.unit}${item.date ? ` (${item.date})` : ""}`).join(" и ");
+      const written = clash.map((item) => `${writtenDose(item)}${item.date ? ` (${item.date})` : ""}`).join(" и ");
       blocks.push({
         title: "Разные дозы",
         body: `Для «${first.name}» разные дозы относятся к одной дате или к одному документу: ${written}. Разбор оставляет обе записи как есть.`,
@@ -237,7 +241,14 @@ function conflicts(state: OwnerState): ReportBlock[] {
 export function buildReport(state: OwnerState): ReportView {
   const readable = state.documents.filter((item) => item.status === "ready");
   const inputHash = createHash("sha256")
-    .update(JSON.stringify({ region: state.region, docs: state.documents.map((item) => [item.id, item.contentHash]), pipeline: PIPELINE_VERSION }))
+    .update(JSON.stringify({
+      region: state.region,
+      docs: state.documents.map((item) => [item.id, item.contentHash, item.status]),
+      facts: state.facts.map((item) => [item.documentId, item.concept, item.valueText, item.unit, item.date]),
+      medications: state.medications.map((item) => [item.documentId, item.name, item.doseText, item.unit, item.frequency ?? "", item.date]),
+      issues: state.issues.map((item) => [item.documentId, item.line, item.description]),
+      pipeline: PIPELINE_VERSION,
+    }))
     .digest("hex");
 
   const limits = [
@@ -300,7 +311,7 @@ export function buildReport(state: OwnerState): ReportView {
     themes.push({
       title: "Препараты в тексте",
       body: `${state.medications
-        .map((item) => `${item.name} ${item.doseText} ${item.unit}${item.date ? `, ${item.date}` : ""}`)
+        .map((item) => `${item.name} ${writtenDose(item)}${item.date ? `, ${item.date}` : ""}`)
         .join("\n")}\nЭто цитаты документов, не схема приёма.`,
       sources: state.medications.map((item) => {
         const document = state.documents.find((doc) => doc.id === item.documentId);

@@ -21,6 +21,7 @@ export default function DocumentsPage() {
   const [region, setRegion] = useState<Region>("RU");
   const [error, setError] = useState("");
   const [pending, setPending] = useState<"upload" | "delete" | null>(null);
+  const [waiting, setWaiting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -39,7 +40,14 @@ export default function DocumentsPage() {
     setDocuments(body.documents ?? []);
     setReport(body.report ?? null);
     setRegion(body.region ?? "RU");
+    setWaiting(Boolean(body.pending));
   }
+
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => void load(), 2000);
+    return () => window.clearInterval(timer);
+  }, [waiting]);
 
   useEffect(() => {
     void load();
@@ -174,7 +182,7 @@ export default function DocumentsPage() {
           onDrop={(event) => { event.preventDefault(); setOver(false); void upload(event.dataTransfer.files); }}
         >
           <div>
-            <h2>{pending === "upload" ? "Читаем файлы…" : "Перетащите сюда или выберите файлы"}</h2>
+            <h2>{pending === "upload" ? "Принимаем файлы…" : waiting ? "Файлы в очереди" : "Перетащите сюда или выберите файлы"}</h2>
             <p className="quiet">Текст, PDF, снимок. Персональные данные в тексте скрываются до разбора.</p>
           </div>
           <label className="button">

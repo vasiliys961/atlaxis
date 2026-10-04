@@ -40,6 +40,19 @@ export async function writeText(key: string, text: string): Promise<void> {
   });
 }
 
+export async function readBinary(key: string): Promise<Buffer | null> {
+  try {
+    return await readFile(localPath(key));
+  } catch {
+    // Файл мог остаться только в закрытом хранилище.
+  }
+  if (!useBlob()) return null;
+  const { get } = await import("@vercel/blob");
+  const result = await get(key, { access: "private", useCache: false });
+  if (!result || result.statusCode !== 200) return null;
+  return Buffer.from(await new Response(result.stream).arrayBuffer());
+}
+
 export async function writeBinary(key: string, bytes: Buffer): Promise<void> {
   if (!useBlob()) return;
   const { put } = await import("@vercel/blob");

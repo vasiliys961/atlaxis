@@ -50,12 +50,38 @@ function safeName(fileName: string): string {
   return name.replace(/^\.+/, "") || "document";
 }
 
+function dropDerivatives(state: OwnerState, documentId: string): void {
+  state.facts = state.facts.filter((item) => item.documentId !== documentId);
+  state.medications = state.medications.filter((item) => item.documentId !== documentId);
+  state.issues = state.issues.filter((item) => item.documentId !== documentId);
+}
+
+export async function stageFile(
+  state: OwnerState,
+  dir: string,
+  fileName: string,
+  bytes: Buffer,
+): Promise<MedicalDocument> {
+  return acceptFile(state, dir, fileName, bytes);
+}
+
 export async function ingestFile(
   state: OwnerState,
   dir: string,
   fileName: string,
   bytes: Buffer,
   origin: "phone" | "computer" = "computer",
+): Promise<MedicalDocument> {
+  const document = await acceptFile(state, dir, fileName, bytes);
+  if (document.status !== "queued") return document;
+  return settleDocument(state, document, bytes, origin);
+}
+
+async function acceptFile(
+  state: OwnerState,
+  dir: string,
+  fileName: string,
+  bytes: Buffer,
 ): Promise<MedicalDocument> {
   let name = safeName(fileName);
   const hash = contentHash(bytes);
@@ -98,6 +124,26 @@ export async function ingestFile(
 
   await writeFile(path.join(dir, `${id}.bin`), bytes);
   await writeBinary(`${path.basename(dir)}/${id}.bin`, bytes);
+  const queued: MedicalDocument = {
+    ...base,
+    status: "queued",
+    statusLabel: "В очереди",
+    note: "Файл принят. Чтение идёт отдельно и не держит отправку.",
+  };
+  state.documents.push(queued);
+  return queued;
+}
+
+export async function settleDocument(
+  state: OwnerState,
+  document: MedicalDocument,
+  bytes: Buffer,
+  origin: "phone" | "computer" = "computer",
+): Promise<MedicalDocument> {
+  if (document.status !== "queued") return document;
+  const id = document.id;
+  const ext = extension(document.fileName) || sniffExt(bytes);
+  dropDerivatives(state, id);
 
   if (IMAGE_EXT.has(ext) || ext === "dcm" || ext === "dicom") {
     if (IMAGE_EXT.has(ext)) {
@@ -108,17 +154,13 @@ export async function ingestFile(
           const scrubbed = scrubReading(reading);
           if (!scrubbed.leaked) {
             const parsed = parseDocument(scrubbed.lines);
-            const document: MedicalDocument = {
-              ...base,
-              status: "ready",
-              statusLabel: "Готово",
-              note: scrubbed.lines.trim()
-                ? "Gemini 3.8 записала снимок в JSON. В разбор попали только строки, которые совпали со словарём показателей."
-                : "Gemini 3.8 вернула пустой JSON: видимого текста на снимке не нашлось.",
-              studyDate: parsed.studyDate,
-              anonymizedText: scrubbed.json,
-            };
-            state.documents.push(document);
+            document.status = "ready";
+            document.statusLabel = "Готово";
+            document.note = scrubbed.lines.trim()
+              ? "Gemini 3.8 записала снимок в JSON. В разбор попали только строки, которые совпали со словарём показателей."
+              : "Gemini 3.8 вернула пустой JSON: видимого текста на снимке не нашлось.";
+            document.studyDate = parsed.studyDate;
+            document.anonymizedText = scrubbed.json;
             for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });
             for (const medication of parsed.medications) state.medications.push({ ...medication, id: newId(), documentId: id });
             for (const issue of parsed.issues) state.issues.push({ ...issue, id: newId(), documentId: id });
@@ -137,23 +179,19 @@ export async function ingestFile(
       bytes: bytes.length,
       hasKey: Boolean(polzaKey()),
     });
-    const held: MedicalDocument = {
-      ...base,
-      status: "anonymization_unconfirmed",
-      statusLabel: "Снимок сохранён отдельно",
-      note: picture
-        ? eyes.allow
-          ? "Снимок отправлен на чтение, но показатели из ответа не приняты. В разбор они не вошли."
-          : polzaKey()
-            ? eyes.reason
-            : origin === "phone"
-              ? "Снимок со смартфона сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
-              : "Готовый снимок сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
-        : eyes.reason,
-    };
-    state.documents.push(held);
+    document.status = "anonymization_unconfirmed";
+    document.statusLabel = "Снимок сохранён отдельно";
+    document.note = picture
+      ? eyes.allow
+        ? "Снимок отправлен на чтение, но показатели из ответа не приняты. В разбор они не вошли."
+        : polzaKey()
+          ? eyes.reason
+          : origin === "phone"
+            ? "Снимок со смартфона сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
+            : "Готовый снимок сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
+      : eyes.reason;
     state.report = null;
-    return held;
+    return document;
   }
 
   let decoded = "";
@@ -164,15 +202,11 @@ export async function ingestFile(
       decoded = "";
     }
     if (!decoded.trim()) {
-      const held: MedicalDocument = {
-        ...base,
-        status: "anonymization_unconfirmed",
-        statusLabel: "PDF сохранён отдельно",
-        note: "В файле не нашлось текстового слоя. Строки не выдуманы, в разбор он не вошёл.",
-      };
-      state.documents.push(held);
+      document.status = "anonymization_unconfirmed";
+      document.statusLabel = "PDF сохранён отдельно";
+      document.note = "В файле не нашлось текстового слоя. Строки не выдуманы, в разбор он не вошёл.";
       state.report = null;
-      return held;
+      return document;
     }
   } else {
     decoded = bytes.toString("utf8");
@@ -180,26 +214,18 @@ export async function ingestFile(
 
   const anonymized = anonymizeText(decoded);
   if (anonymized.leaked) {
-    const failed: MedicalDocument = {
-      ...base,
-      status: "failed",
-      statusLabel: "Не удалось разобрать",
-      note: "После удаления персональных данных в тексте остались контакт или документ. Файл в разбор не вошёл.",
-    };
-    state.documents.push(failed);
-    return failed;
+    document.status = "failed";
+    document.statusLabel = "Не удалось разобрать";
+    document.note = "После удаления персональных данных в тексте остались контакт или документ. Файл в разбор не вошёл.";
+    return document;
   }
 
   const parsed = parseDocument(anonymized.text);
-  const document: MedicalDocument = {
-    ...base,
-    status: "ready",
-    statusLabel: "Готово",
-    note: parsed.facts.length > 0 ? "Текст прочитан, персональные данные в нём скрыты." : "Текст прочитан. Измерений в нём не найдено.",
-    studyDate: parsed.studyDate,
-    anonymizedText: anonymized.text,
-  };
-  state.documents.push(document);
+  document.status = "ready";
+  document.statusLabel = "Готово";
+  document.note = parsed.facts.length > 0 ? "Текст прочитан, персональные данные в нём скрыты." : "Текст прочитан. Измерений в нём не найдено.";
+  document.studyDate = parsed.studyDate;
+  document.anonymizedText = anonymized.text;
   for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });
   for (const medication of parsed.medications) state.medications.push({ ...medication, id: newId(), documentId: id });
   for (const issue of parsed.issues) state.issues.push({ ...issue, id: newId(), documentId: id });

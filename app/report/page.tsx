@@ -34,13 +34,25 @@ export default function ReportPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    void fetch("/api/documents")
-      .then(async (response) => {
+    let stop = false;
+    let timer = 0;
+    async function pull() {
+      try {
+        const response = await fetch("/api/documents");
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? "Не удалось собрать разбор.");
-        setReport(body.report as ReportView);
-      })
-      .catch((reason: Error) => setError(reason.message));
+        if (stop) return;
+        if (body.report) setReport(body.report as ReportView);
+        if (body.pending) timer = window.setTimeout(() => void pull(), 2000);
+      } catch (reason) {
+        if (!stop) setError(reason instanceof Error ? reason.message : "Не удалось собрать разбор.");
+      }
+    }
+    void pull();
+    return () => {
+      stop = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   if (error) return <p className="error">{error}</p>;
