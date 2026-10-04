@@ -10,8 +10,24 @@ export function themePrompt(title: string, packet: string): string {
   return `Это одна тема уже собранного разбора, не весь комплект. Перескажи только её одним законченным абзацем. Не связывай с другими темами. Не ставь диагноз, не назначай лечение и не добавляй чисел.\n\nТема: ${title}\n${packet}`;
 }
 
+const THEMES_PER_PASS = 2;
+
+export function reportNeedsRefresh(state: OwnerState): boolean {
+  if (state.jobs.some((job) => job.status === "queued" || job.status === "running")) return false;
+  if (!state.documents.some((item) => item.status === "ready")) return false;
+  const next = buildReport(state);
+  if (state.report?.inputHash !== next.inputHash) return true;
+  if (!polzaKey()) return false;
+  return next.themes.some((theme) => {
+    if (!theme.body.trim()) return false;
+    const saved = state.report?.themes.find((item) => item.title === theme.title && item.body === theme.body);
+    return !saved?.notes?.length;
+  });
+}
+
 async function narrateThemes(report: ReportView, state: OwnerState): Promise<void> {
-  await Promise.all(report.themes.filter((theme) => theme.body.trim() && !theme.notes?.length).map(async (theme) => {
+  const open = report.themes.filter((theme) => theme.body.trim() && !theme.notes?.length).slice(0, THEMES_PER_PASS);
+  await Promise.all(open.map(async (theme) => {
     const packet = [theme.lead, theme.body].filter(Boolean).join("\n");
     const prompt = themePrompt(theme.title, packet);
     const notes = await Promise.all(BRAIN_MODELS.map(async (model) => {
@@ -51,6 +67,8 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
   if (!last || last.inputHash !== report.inputHash) {
     state.reports.push({ ...report, id: newId() });
     if (state.reports.length > 20) state.reports.splice(0, state.reports.length - 20);
+  } else {
+    state.reports[state.reports.length - 1] = { ...report, id: last.id };
   }
   return report;
 }

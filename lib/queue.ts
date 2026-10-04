@@ -4,7 +4,7 @@ import { waitUntil } from "@vercel/functions";
 import { readBinary } from "./files";
 import { settleDocument } from "./ingest";
 import { newId } from "./parse";
-import { publishReport } from "./publish";
+import { publishReport, reportNeedsRefresh } from "./publish";
 import { buildReport } from "./report";
 import { withOwner } from "./store";
 import type { JobRecord, OwnerState } from "./types";
@@ -79,7 +79,7 @@ export async function drainOwner(ownerId: string): Promise<void> {
     }
     await withOwner(ownerId, async (state) => {
       if (state.jobs.some((job) => job.status === "queued" || job.status === "running")) return;
-      if (state.report?.inputHash === buildReport(state).inputHash) return;
+      if (!reportNeedsRefresh(state)) return;
       await publishReport(state);
     });
   } finally {

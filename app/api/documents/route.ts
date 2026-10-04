@@ -3,7 +3,7 @@ import path from "path";
 import { audit } from "@/lib/audit";
 import { ownerId } from "@/lib/owner";
 import { stageFile } from "@/lib/ingest";
-import { listedDocuments } from "@/lib/publish";
+import { listedDocuments, reportNeedsRefresh } from "@/lib/publish";
 import { continueAfterResponse, drainOwner, enqueueDocument, reportPending } from "@/lib/queue";
 import { withOwner } from "@/lib/store";
 
@@ -18,8 +18,9 @@ export async function GET() {
       documents: listedDocuments(state),
       report: state.report,
       pending: reportPending(state),
+      refreshing: reportNeedsRefresh(state),
     }));
-    if (payload.pending) continueAfterResponse(drainOwner(id));
+    if (payload.pending || payload.refreshing) continueAfterResponse(drainOwner(id));
     return Response.json(payload);
   } catch {
     return Response.json({ error: "Не удалось открыть документы." }, { status: 400 });

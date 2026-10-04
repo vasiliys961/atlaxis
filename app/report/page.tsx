@@ -81,7 +81,7 @@ export default function ReportPage() {
         if (!response.ok) throw new Error(body.error ?? "Не удалось собрать разбор.");
         if (stop) return;
         if (body.report) setReport(body.report as ReportView);
-        if (body.pending) timer = window.setTimeout(() => void pull(), 2000);
+        if (body.pending || body.refreshing) timer = window.setTimeout(() => void pull(), 2500);
       } catch (reason) {
         if (!stop) setError(reason instanceof Error ? reason.message : "Не удалось собрать разбор.");
       }
@@ -118,7 +118,7 @@ export default function ReportPage() {
 
       <section className="section">
         <h2>Модели</h2>
-        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Текст по этому JSON и разбору пишут {BRAIN_MODELS.map((model) => model.label).join(" и ")}. Актуальные рекомендации по уже загруженным анализам ищет Sonar ({SONAR_MODEL}).</p>
+        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Каждую тему отдельно пересказывают {BRAIN_MODELS.map((model) => model.label).join(" и ")}. Актуальные рекомендации по уже загруженным анализам ищет Sonar ({SONAR_MODEL}).</p>
         {report.modelsReady === false ? <p className="quiet">Ключ Пользы AI не задан. Модели не вызываются, разбор собран правилами.</p> : null}
       </section>
 
@@ -193,6 +193,9 @@ export default function ReportPage() {
       {report.themes.length > 0 ? (
         <section className="section">
           <h2>Что написано в документах</h2>
+          {report.themes.some((block) => block.body.trim() && !block.notes?.length) ? (
+            <p className="quiet">Пояснения по темам ещё пишутся.</p>
+          ) : null}
           {report.themes.map((block) => (
             <article key={block.title} className="note">
               <h3>{block.title}</h3>
