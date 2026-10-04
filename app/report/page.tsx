@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { BRAIN_MODELS, EYES_MODEL } from "@/lib/models";
+import { BRAIN_MODELS, EYES_MODEL, SONAR_MODEL } from "@/lib/models";
 import type { ReportBlock, ReportView } from "@/lib/types";
 
 function Lines({ text }: { text: string }) {
@@ -68,7 +68,7 @@ export default function ReportPage() {
 
       <section className="section">
         <h2>Модели</h2>
-        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Текст по этому JSON и разбору пишут {BRAIN_MODELS.map((model) => model.label).join(" и ")}.</p>
+        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Текст по этому JSON и разбору пишут {BRAIN_MODELS.map((model) => model.label).join(" и ")}. Актуальные рекомендации по уже загруженным анализам ищет Sonar ({SONAR_MODEL}).</p>
         {report.modelsReady === false ? <p className="quiet">Ключ Пользы AI не задан. Модели не вызываются, разбор собран правилами.</p> : null}
       </section>
 
@@ -198,6 +198,13 @@ export default function ReportPage() {
       <section className="section">
         <h2>Какие рекомендации смотрели</h2>
         <p>{report.guidelineNote}</p>
+        {report.guidelineSearch ? (
+          <article className="note">
+            <h3>Что нашёл Sonar</h3>
+            <p>{report.guidelineSearch}</p>
+            <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
+          </article>
+        ) : null}
       </section>
 
       <section className="footer-note">

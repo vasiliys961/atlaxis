@@ -81,6 +81,7 @@ export type ReportView = {
   intro: string;
   documents: { id: string; name: string; statusLabel: string; note: string }[];
   guidelineNote: string;
+  guidelineSearch?: string;
   themes: ReportBlock[];
   changes: ReportBlock[];
   conflicts: ReportBlock[];

@@ -25,6 +25,7 @@ function dossier(report: ReportView): string {
     report.headline,
     report.intro,
     report.guidelineNote,
+    report.guidelineSearch ? `Найденные рекомендации:\n${report.guidelineSearch}` : "",
     ...report.themes.map((item) => `${item.title}\n${item.body}`),
     ...report.changes.map((item) => `${item.title}\n${item.body}`),
     ...report.conflicts.map((item) => `${item.title}\n${item.body}`),
@@ -38,7 +39,7 @@ function dossier(report: ReportView): string {
 }
 
 export function acceptExplanation(candidate: string, state: OwnerState): boolean {
-  return acceptWording(candidate, state) && !TREATMENT.test(candidate);
+  return acceptWording(candidate, state, state.report?.guidelineSearch ?? "") && !TREATMENT.test(candidate);
 }
 
 function priorTurns(chat: ChatTurn[]): string {
@@ -57,6 +58,9 @@ async function explain(state: OwnerState, question: string): Promise<string> {
   });
   if (!decision.allow) return "Сейчас ответ по анализам недоступен: ключ модели не задан. Разбор на экране собран правилами.";
   const report = buildReport(state);
+  if (state.report?.inputHash === report.inputHash && state.report.guidelineSearch) {
+    report.guidelineSearch = state.report.guidelineSearch;
+  }
   const prompt = `${EXPLAIN_SYSTEM}
 
 Сведения из документов:

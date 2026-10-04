@@ -6,6 +6,7 @@ import { anonymizeText } from "./anonymize";
 import { AXES, CLUSTERS } from "./catalog";
 import { askDoctorOpus } from "./doctor-opus";
 import { EXPLAIN_SYSTEM, acceptExplanation } from "./explain";
+import { acceptGuidelineSearch, guidelineSearchPrompt } from "./guidelines-search";
 import { sanitizeImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
@@ -194,4 +195,28 @@ test("chat explains findings and drops diagnosis or treatment", () => {
   });
   assert.equal(acceptExplanation("ЛПНП в бланке 4.8 ммоль/л. Это выше обычной верхней границы, которую стоит показать врачу.", state), true);
   assert.equal(acceptExplanation("Ваш диагноз: гиперхолестеринемия. Принимайте аторвастатин.", state), false);
+});
+
+test("sonar looks up guidelines for the recorded labs only", () => {
+  const prompt = guidelineSearchPrompt("RU", "ЛПНП: 4.8 ммоль/л, 2024-03-12");
+  assert.match(prompt, /Минздрава России/);
+  assert.match(prompt, /Не ставь диагноз/);
+  assert.match(prompt, /Не назначай и не отменяй лечение/);
+  const state = emptyState();
+  state.facts.push({
+    id: "f",
+    documentId: "a",
+    concept: "LDL",
+    label: "ЛПНП",
+    value: 4.8,
+    valueText: "4.8",
+    unit: "ммоль/л",
+    referenceLow: null,
+    referenceHigh: null,
+    line: 1,
+    excerpt: "ЛПНП 4.8 ммоль/л",
+    date: "2024-03-12",
+  });
+  assert.equal(acceptGuidelineSearch("Клинические рекомендации Минздрава по липидам, 2023. Источник называет порог 1.4 ммоль/л для отдельной группы. В бланке записан ЛПНП 4.8 ммоль/л."), true);
+  assert.equal(acceptGuidelineSearch("Ваш диагноз: гиперхолестеринемия. Принимайте аторвастатин."), false);
 });

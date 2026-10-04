@@ -1,3 +1,4 @@
+import { searchGuidelines } from "./guidelines-search";
 import { BRAIN_MODELS } from "./models";
 import { newId } from "./parse";
 import { polzaKey, polzaText } from "./polza";
@@ -43,13 +44,18 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
   const report = buildReport(state);
   report.modelsReady = Boolean(polzaKey());
   const previous = state.report;
-  const same = previous && previous.inputHash === report.inputHash && previous.wording;
-  if (same) {
-    report.wording = previous.wording;
-  } else if (report.modelsReady && report.status === "ready" && state.documents.some((item) => item.status === "ready")) {
-    const wording = await narrate(report, state);
-    if (wording) report.wording = wording;
-  }
+  const same = previous?.inputHash === report.inputHash;
+  const canAsk = Boolean(report.modelsReady && report.status === "ready" && state.documents.some((item) => item.status === "ready"));
+  const [wording, guidelineSearch] = await Promise.all([
+    same && previous?.wording
+      ? Promise.resolve(previous.wording)
+      : canAsk ? narrate(report, state) : Promise.resolve(null),
+    same && previous?.guidelineSearch
+      ? Promise.resolve(previous.guidelineSearch)
+      : canAsk && state.facts.length > 0 ? searchGuidelines(state) : Promise.resolve(null),
+  ]);
+  if (wording) report.wording = wording;
+  if (guidelineSearch) report.guidelineSearch = guidelineSearch;
   state.report = report;
   const last = state.reports[state.reports.length - 1];
   if (!last || last.inputHash !== report.inputHash) {
