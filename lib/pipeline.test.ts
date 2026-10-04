@@ -4,9 +4,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { anonymizeText } from "./anonymize";
 import { AXES, CLUSTERS } from "./catalog";
+import { findingQuestion } from "./discuss";
 import { askDoctorOpus } from "./doctor-opus";
-import { EXPLAIN_SYSTEM, acceptExplanation } from "./explain";
-import { acceptGuidelineSearch, guidelineSearchPrompt } from "./guidelines-search";
+import { EXPLAIN_SYSTEM, acceptExplanation, findingBrief } from "./explain";
+import { guidelineSentence } from "./guidelines";
+import { acceptGuidelineSearch, guidelineSearchPrompt, RU_NOT_FOUND, settleRussianSearch, sonarFoundRussian } from "./guidelines-search";
 import { sanitizeImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
@@ -15,7 +17,6 @@ import { readLuna, routeQuestion, writerFor } from "./router";
 import { parseDocument } from "./parse";
 import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
-import { qualityChecks } from "./checks";
 import { buildReport, validateReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 
@@ -339,46 +340,6 @@ test("a read image stays beside the same-month blank and adds no measurement", (
   assert.equal(report.relationships[0]?.sources.length, 2);
 });
 
-test("quality checks stay separate counts", () => {
-  const state = emptyState();
-  state.documents.push({
-    id: "a",
-    fileName: "a.txt",
-    byteSize: 1,
-    contentHash: "1",
-    pipelineVersion: "t",
-    status: "ready",
-    statusLabel: "Готово",
-    note: "",
-    studyDate: "2024-03-12",
-    anonymizedText: "Гемоглобин 140 г/л",
-    createdAt: "",
-  });
-  state.facts.push({
-    id: "dated",
-    documentId: "a",
-    concept: "HGB",
-    label: "гемоглобин",
-    value: 140,
-    valueText: "140",
-    unit: "г/л",
-    date: "2024-03-12",
-    dateStatus: "known",
-    referenceLow: null,
-    referenceHigh: null,
-    line: 1,
-    excerpt: "Гемоглобин 140 г/л",
-    extraction: "text",
-    status: "extracted",
-  });
-  state.report = buildReport(state);
-  const checks = qualityChecks(state);
-  assert.equal(checks.length, 7);
-  assert.equal(checks.find((item) => item.label === "Верность даты")?.text, "1 из 1");
-  assert.match(checks.find((item) => item.label === "Пробелы без поручения")?.text ?? "", /из/);
-  assert.doesNotMatch(checks.map((item) => `${item.label} ${item.text}`).join("\n"), /точность|%/);
-});
-
 test("invented dose blocks the report", () => {
   const state = emptyState();
   const report = validateReport(
@@ -450,6 +411,18 @@ test("doctor opus question stays on this machine", async () => {
   assert.match(raw.toString("utf8"), /никуда не ушёл/);
 });
 
+test("a finding becomes a professor question without a diagnosis request", () => {
+  assert.equal(findingQuestion("  ЛПНП 4.8 ммоль/л  "), "Обсудить находку: ЛПНП 4.8 ммоль/л");
+  assert.equal(findingQuestion("   "), "");
+  const long = findingQuestion("ЛПНП ".repeat(800));
+  assert.ok(long.startsWith("Обсудить находку: "));
+  assert.ok(long.length < 1500);
+  const brief = findingBrief(findingQuestion("гемоглобин 108 г/л"));
+  assert.match(brief, /одна находка/);
+  assert.match(brief, /диагноз/);
+  assert.equal(findingBrief("что значит это число"), "");
+});
+
 test("chat explains findings and drops diagnosis or treatment", () => {
   assert.match(EXPLAIN_SYSTEM, /Не ставь диагноз/);
   assert.match(EXPLAIN_SYSTEM, /Не назначай и не отменяй лечение/);
@@ -480,6 +453,15 @@ test("sonar looks up guidelines for the recorded labs only", () => {
   assert.match(prompt, /Минздрава России/);
   assert.match(prompt, /Не ставь диагноз/);
   assert.match(prompt, /Не назначай и не отменяй лечение/);
+  assert.match(prompt, /Российскую рекомендацию поиск не нашёл/);
+  const found = "Клинические рекомендации Минздрава России по нарушениям липидного обмена, 2023.";
+  assert.equal(sonarFoundRussian(found), true);
+  assert.equal(sonarFoundRussian(RU_NOT_FOUND), false);
+  assert.match(guidelineSentence("RU", found), /Sonar нашёл опубликованную российскую/);
+  assert.match(guidelineSentence("RU", RU_NOT_FOUND), /Sonar не нашёл российскую рекомендацию/);
+  assert.match(guidelineSentence("RU", RU_NOT_FOUND), /США и Европы/);
+  assert.match(guidelineSentence("RU"), /Sonar ищет/);
+  assert.equal(settleRussianSearch("Нашёлся только источник ESC, 2019.").startsWith(RU_NOT_FOUND), true);
   const state = emptyState();
   state.facts.push({
     id: "f",

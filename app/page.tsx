@@ -10,7 +10,7 @@ type ListedDocument = Omit<MedicalDocument, "anonymizedText"> & {
 };
 
 const REGIONS: { id: Region; label: string; hint: string }[] = [
-  { id: "RU", label: "Россия", hint: "Российской записи в каталоге нет. Разбор предлагает европейские и американские с пометкой. Цель источника показана и не считается личной." },
+  { id: "RU", label: "Россия", hint: "Sonar ищет опубликованную российскую рекомендацию. Если не находит, в разборе остаются записи США и Европы с пометкой." },
   { id: "EU", label: "Европа", hint: "В каталоге ESC/EAS 2025. Версия 2019 актуальной не считается. Цель из записи показана с пометкой группы и не становится личной." },
   { id: "US", label: "США", hint: "В каталоге AHA/ACC 2018. Числовой цели в этой записи нет." },
 ];
@@ -183,11 +183,11 @@ export default function DocumentsPage() {
         >
           <div>
             <h2>{pending === "upload" ? "Принимаем файлы…" : waiting ? (documents.some((item) => item.statusLabel === "Разбирается") ? "Файлы разбираются" : "Файлы проверяются") : "Перетащите сюда или выберите файлы"}</h2>
-            <p className="quiet">Текст, PDF, снимок. Персональные данные в тексте скрываются до разбора.</p>
+            <p className="quiet">Текст, PDF, Word, снимок. Снимок с iPhone сохраняется как JPEG. Персональные данные в тексте скрываются до разбора.</p>
           </div>
           <label className="button">
             {pending === "upload" ? "Подождите" : "Выбрать файлы"}
-            <input hidden type="file" multiple accept=".txt,.csv,.md,.pdf,.png,.jpg,.jpeg,.webp,.dcm" onChange={(event) => void upload(event.target.files)} />
+            <input hidden type="file" multiple accept=".txt,.csv,.md,.pdf,.docx,.png,.jpg,.jpeg,.webp,.heic,.heif,.dcm" onChange={(event) => void upload(event.target.files)} />
           </label>
         </div>
         {documents.length > 0 ? (
@@ -204,7 +204,7 @@ export default function DocumentsPage() {
         <div className="chips">
           <button className="chip" type="button" onClick={() => setGuideOpen(true)}>Инструкция</button>
           <button className="chip" type="button" onClick={() => readyImage.current?.click()} disabled={pending !== null}>Готовый PNG или JPEG</button>
-          <input ref={readyImage} hidden type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple onChange={(event) => void upload(event.target.files)} />
+          <input ref={readyImage} hidden type="file" accept=".png,.jpg,.jpeg,.heic,.heif,image/png,image/jpeg,image/heic,image/heif" multiple onChange={(event) => void upload(event.target.files)} />
           <button className="chip" type="button" onClick={() => void openPhone()} disabled={pending !== null}>Со смартфона</button>
           <button className="chip accent" type="button" onClick={() => void loadExample()} disabled={pending !== null}>Открыть пример: бланки и PDF</button>
         </div>
@@ -217,11 +217,12 @@ export default function DocumentsPage() {
             <p className="kicker">Для пациента</p>
             <h2 id="guide-title">Как пользоваться</h2>
             <div className="quiet stack">
-              <p>Загрузите бланки и выписки текстом или PDF. Из них читаются показатели, даты и дозы, которые написаны в файле.</p>
-              <p>Готовый снимок — кнопка «PNG или JPEG»: файл, который уже лежит на компьютере.</p>
-              <p>Со смартфона — кнопка показывает QR-код. Наведите камеру телефона: можно снять снимок или выбрать готовый PNG или JPEG. Файл попадёт в этот же разбор.</p>
-              <p>Снимок сохраняется, но числа с картинки не читаются: текст на изображении не проверяется.</p>
+              <p>Загрузите бланки и выписки текстом, PDF или Word (.docx). Из них читаются показатели, даты и дозы, которые написаны в файле.</p>
+              <p>Готовый снимок — кнопка «PNG или JPEG»: файл, который уже лежит на компьютере. Снимок с iPhone в HEIC сохраняется как JPEG.</p>
+              <p>Со смартфона — кнопка показывает QR-код. Наведите камеру телефона: можно снять снимок или выбрать готовый файл. HEIC с iPhone сохраняется как JPEG и попадает в этот же разбор.</p>
+              <p>Снимок читается в показатели, которые совпали со словарём. Если текст на изображении не принят, числа с него в разбор не входят.</p>
               <p>Разбор — один текст. Он показывает, что написано, как это менялось и где записи не сходятся. Диагноз и лечение он не назначает.</p>
+              <p>У каждой находки есть кнопка «Профессору». Она отправляет эту находку в окно справа. Профессор поясняет запись и не ставит диагноз.</p>
               <p>«Удалить мои данные» стирает файлы этого разбора.</p>
             </div>
             <div className="actions plain">
@@ -236,7 +237,7 @@ export default function DocumentsPage() {
           <div className="window" role="dialog" aria-modal="true" aria-labelledby="phone-title" onClick={(event) => event.stopPropagation()}>
             <p className="kicker">Смартфон</p>
             <h2 id="phone-title">Отправить снимок с телефона</h2>
-            <p className="quiet">Наведите камеру смартфона на код. Снимок или готовый PNG и JPEG появятся в этом списке. Код действует два часа и ведёт только в этот разбор.</p>
+            <p className="quiet">Наведите камеру смартфона на код. Снимок появится в этом списке. Файл с iPhone в HEIC сохраняется как JPEG. Код действует два часа и ведёт только в этот разбор.</p>
             {phoneQr ? <img className="qr" src={phoneQr} alt="QR-код для отправки снимка" /> : <p className="quiet">Готовим код…</p>}
             <div className="actions plain">
               <button className="secondary" type="button" onClick={() => setPhoneOpen(false)}>Закрыть</button>

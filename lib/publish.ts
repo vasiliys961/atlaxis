@@ -1,4 +1,5 @@
-import { searchGuidelines } from "./guidelines-search";
+import { guidelineSentence } from "./guidelines";
+import { RU_NOT_FOUND, searchGuidelines, sonarFoundRussian } from "./guidelines-search";
 import { OPUS } from "./models";
 import { writerFor } from "./router";
 import { newId } from "./parse";
@@ -19,6 +20,10 @@ export function reportNeedsRefresh(state: OwnerState): boolean {
   const next = buildReport(state);
   if (state.report?.inputHash !== next.inputHash) return true;
   if (!polzaKey()) return false;
+  if (state.region === "RU" && state.report?.status === "ready" && state.facts.length > 0) {
+    const text = state.report.guidelineSearch ?? "";
+    if (!sonarFoundRussian(text) && !text.includes(RU_NOT_FOUND)) return true;
+  }
   return next.themes.some((theme) => {
     if (!theme.body.trim()) return false;
     const saved = state.report?.themes.find((item) => item.title === theme.title && item.body === theme.body);
@@ -61,13 +66,17 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
       if (written?.length) theme.notes = written;
     }
   }
+  const savedSearch = same ? previous?.guidelineSearch : undefined;
+  const reuseSearch = Boolean(savedSearch && (report.region !== "RU" || sonarFoundRussian(savedSearch) || savedSearch.includes(RU_NOT_FOUND)));
   const [guidelineSearch] = await Promise.all([
-    same && previous?.guidelineSearch
-      ? Promise.resolve(previous.guidelineSearch)
+    reuseSearch
+      ? Promise.resolve(savedSearch ?? null)
       : canAsk && state.facts.length > 0 ? searchGuidelines(state) : Promise.resolve(null),
     canAsk ? narrateThemes(report, state) : Promise.resolve(),
   ]);
   if (guidelineSearch) report.guidelineSearch = guidelineSearch;
+  if (report.region === "RU" && canAsk && state.facts.length > 0 && !report.guidelineSearch) report.guidelineSearch = RU_NOT_FOUND;
+  report.guidelineNote = guidelineSentence(report.region, report.guidelineSearch);
   state.report = report;
   const last = state.reports[state.reports.length - 1];
   if (!last || last.inputHash !== report.inputHash) {

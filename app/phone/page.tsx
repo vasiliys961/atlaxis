@@ -39,7 +39,7 @@ function PhoneUpload() {
     <article className="sheet">
       <p className="kicker">Смартфон</p>
       <h1>Отправить снимок в разбор</h1>
-      <p className="lead">Снимите изображение или выберите готовый PNG или JPEG. Файл попадёт в тот разбор, который открыт на компьютере. Это не отдельный кабинет.</p>
+      <p className="lead">Снимите изображение или выберите готовый файл. Снимок с iPhone в HEIC сохраняется как JPEG и попадает в тот разбор, который открыт на компьютере. Это не отдельный кабинет.</p>
       <div className="actions plain">
         <button type="button" onClick={() => camera.current?.click()} disabled={pending}>
           {pending ? "Отправляем…" : "Снять снимок"}
@@ -47,8 +47,8 @@ function PhoneUpload() {
         <button className="secondary" type="button" onClick={() => gallery.current?.click()} disabled={pending}>
           Готовый PNG или JPEG
         </button>
-        <input ref={camera} hidden type="file" accept="image/png,image/jpeg" capture="environment" onChange={(event) => void send(event.target.files)} />
-        <input ref={gallery} hidden type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple onChange={(event) => void send(event.target.files)} />
+        <input ref={camera} hidden type="file" accept="image/png,image/jpeg,image/heic,image/heif,.heic,.heif" capture="environment" onChange={(event) => void send(event.target.files)} />
+        <input ref={gallery} hidden type="file" accept=".png,.jpg,.jpeg,.heic,.heif,image/png,image/jpeg,image/heic,image/heif" multiple onChange={(event) => void send(event.target.files)} />
       </div>
       {error ? <p className="error">{error}</p> : null}
       {note ? <p className="quiet">{note}</p> : null}

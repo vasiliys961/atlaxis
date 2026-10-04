@@ -3,7 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {
-    serverComponentsExternalPackages: ["unpdf"],
+    serverComponentsExternalPackages: ["unpdf", "heic-convert", "heic-decode"],
   },
 };
 

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +13,33 @@ import { buildReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 
 const root = path.join(process.cwd(), "fixtures", "cases");
+const exec = promisify(execFile);
+
+async function wordFile(dir: string): Promise<Buffer> {
+  const pack = path.join(dir, "pack");
+  await mkdir(path.join(pack, "_rels"), { recursive: true });
+  await mkdir(path.join(pack, "word"), { recursive: true });
+  await writeFile(path.join(pack, "[Content_Types].xml"), `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`);
+  await writeFile(path.join(pack, "_rels", ".rels"), `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+  await writeFile(path.join(pack, "word", "document.xml"), `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Дата исследования: 2024-03-12</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Гемоглобин 108 г/л 120-160</w:t></w:r></w:p>
+  </w:body>
+</w:document>`);
+  const out = path.join(dir, "blank.docx");
+  await exec("zip", ["-qr", out, "[Content_Types].xml", "_rels", "word"], { cwd: pack });
+  return readFile(out);
+}
 
 async function load(names: string[], region: OwnerState["region"] = "RU"): Promise<OwnerState> {
   const dir = await mkdtemp(path.join(tmpdir(), "atlaxis-"));
@@ -171,6 +200,47 @@ test("a long jpeg name keeps its type", async () => {
   assert.equal(state.documents[0]?.status, "anonymization_unconfirmed");
   assert.match(state.documents[1]?.fileName ?? "", /\.jpg$/);
   assert.doesNotMatch(state.documents.map((item) => item.note).join(" "), /проверку типа/);
+});
+
+test("a word file is read as text", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "atlaxis-docx-"));
+  const state = emptyState();
+  try {
+    const bytes = await wordFile(dir);
+    await ingestFile(state, dir, "бланк.docx", bytes);
+    const legacy = Buffer.concat([Buffer.from("d0cf11e0a1b11ae1", "hex"), Buffer.alloc(64)]);
+    await ingestFile(state, dir, "old.doc", legacy);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  const ready = state.documents.find((item) => item.fileName.endsWith(".docx"));
+  assert.equal(ready?.status, "ready");
+  assert.equal(state.facts.some((item) => item.concept === "HGB" && item.value === 108), true);
+  assert.match(state.documents.find((item) => item.fileName.endsWith(".doc"))?.note ?? "", /\.docx/);
+});
+
+test("an iphone heic photo is stored as jpeg", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "atlaxis-heic-"));
+  const state = emptyState();
+  try {
+    const heic = await readFile(path.join(process.cwd(), "fixtures", "iphone.heic"));
+    await ingestFile(state, dir, "IMG_0001.HEIC", heic);
+    await ingestFile(state, dir, "already.heic", Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    const broken = Buffer.alloc(24);
+    broken.write("ftyp", 4, "ascii");
+    broken.write("heic", 8, "ascii");
+    await ingestFile(state, dir, "broken.HEIC", broken);
+    const stored = state.documents.find((item) => item.fileName === "IMG_0001.jpg");
+    assert.ok(stored);
+    assert.equal(stored?.status === "failed", false);
+    const bin = await readFile(path.join(dir, `${stored?.id}.bin`));
+    assert.equal(bin[0], 0xff);
+    assert.equal(bin[1], 0xd8);
+    assert.equal(state.documents.find((item) => item.fileName === "already.jpg")?.status, "anonymization_unconfirmed");
+    assert.match(state.documents.find((item) => item.fileName === "broken.heic")?.note ?? "", /JPEG/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("prompt injection does not become a diagnosis", async () => {

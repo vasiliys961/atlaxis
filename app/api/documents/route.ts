@@ -22,7 +22,7 @@ export async function GET() {
         ? {
             ...state.report,
             catalog: catalogEntries(state.region),
-            guidelineNote: guidelineSentence(state.region),
+            guidelineNote: guidelineSentence(state.region, state.report.guidelineSearch),
             timeline: state.report.status === "blocked" ? [] : buildTimeline(state),
             relationships: state.report.status === "blocked" ? [] : buildRelationships(state),
           }

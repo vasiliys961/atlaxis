@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { QualityCheck } from "@/lib/checks";
+import { useState } from "react";
 
 const TYPES = [
   ["outdated_guideline", "Устаревшая рекомендация"],
@@ -24,20 +23,6 @@ const SEVERITY = [
 export default function ReviewPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [checks, setChecks] = useState<QualityCheck[]>([]);
-
-  useEffect(() => {
-    let stop = false;
-    void fetch("/api/reviews")
-      .then((response) => response.json())
-      .then((body: { checks?: QualityCheck[] }) => {
-        if (!stop && body.checks) setChecks(body.checks);
-      })
-      .catch(() => undefined);
-    return () => {
-      stop = true;
-    };
-  }, []);
 
   async function submit(formData: FormData) {
     setError("");
@@ -61,15 +46,6 @@ export default function ReviewPage() {
       <p className="kicker">Проверка качества</p>
       <h1>Разбор одной находки</h1>
       <p className="lead">Это не кабинет врача и не доступ к чужому аккаунту. Нужны цитата ответа, почему это неверно и как должно звучать в справочных границах.</p>
-      {checks.length > 0 ? (
-        <section className="section">
-          <h2>Отдельные проверки</h2>
-          <p className="quiet">Каждая строка считается своим правилом. Общей оценки здесь нет.</p>
-          {checks.map((item) => (
-            <p key={item.label}>{item.label}: {item.text}</p>
-          ))}
-        </section>
-      ) : null}
       <form
         className="stack"
         onSubmit={(event) => {

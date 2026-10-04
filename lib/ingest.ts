@@ -1,7 +1,9 @@
-import { writeFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import path from "path";
 import { writeBinary } from "./files";
 import { anonymizeText } from "./anonymize";
+import { extractDocxText, looksLikeDocx, looksLikeLegacyDoc } from "./docx";
+import { heicToJpeg, isHeicContainer, jpegName } from "./heic";
 import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
 import { decideProcessing } from "./policy";
@@ -12,8 +14,10 @@ import { PIPELINE_VERSION, type MedicalDocument, type OwnerState } from "./types
 const MAX_BYTES = 20 * 1024 * 1024;
 
 const TEXT_EXT = new Set(["txt", "csv", "md"]);
+const WORD_EXT = new Set(["docx"]);
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
 const KEEP_EXT = new Set(["pdf", "dcm", "dicom"]);
+const HEIC_EXT = new Set(["heic", "heif"]);
 
 function extension(fileName: string): string {
   const match = fileName.toLowerCase().match(/\.([a-z0-9]+)$/);
@@ -26,6 +30,7 @@ function sniffExt(bytes: Buffer): string {
   if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "webp";
   if (bytes.length >= 5 && bytes.subarray(0, 5).toString("ascii") === "%PDF-") return "pdf";
   if ((bytes.length >= 132 && bytes.subarray(128, 132).toString("ascii") === "DICM") || bytes.subarray(0, 4).toString("ascii") === "DICM") return "dcm";
+  if (looksLikeDocx(bytes)) return "docx";
   return "";
 }
 
@@ -35,6 +40,7 @@ function looksLike(bytes: Buffer, ext: string): boolean {
   if (ext === "jpg" || ext === "jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8;
   if (ext === "webp") return bytes.subarray(0, 4).toString("ascii") === "RIFF";
   if (ext === "pdf") return bytes.subarray(0, 4).toString("ascii") === "%PDF";
+  if (ext === "docx") return looksLikeDocx(bytes);
   if (ext === "dcm" || ext === "dicom") return bytes.subarray(128, 132).toString("ascii") === "DICM" || bytes.subarray(0, 4).toString("ascii") === "DICM";
   return false;
 }
@@ -48,6 +54,24 @@ function safeName(fileName: string): string {
   const suffix = ext ? `.${ext}` : "";
   const name = `${stem.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
   return name.replace(/^\.+/, "") || "document";
+}
+
+function refused(state: OwnerState, name: string, payload: Buffer, note: string, base?: Omit<MedicalDocument, "status" | "statusLabel" | "note">): MedicalDocument {
+  const failed: MedicalDocument = {
+    id: base?.id ?? newId(),
+    fileName: base?.fileName ?? name,
+    byteSize: base?.byteSize ?? payload.length,
+    contentHash: base?.contentHash ?? contentHash(payload),
+    pipelineVersion: PIPELINE_VERSION,
+    studyDate: null,
+    anonymizedText: "",
+    createdAt: base?.createdAt ?? new Date().toISOString(),
+    status: "failed",
+    statusLabel: "Не удалось разобрать",
+    note,
+  };
+  state.documents.push(failed);
+  return failed;
 }
 
 function dropDerivatives(state: OwnerState, documentId: string): void {
@@ -74,7 +98,8 @@ export async function ingestFile(
 ): Promise<MedicalDocument> {
   const document = await acceptFile(state, dir, fileName, bytes);
   if (document.status !== "queued") return document;
-  return settleDocument(state, document, bytes, origin);
+  const stored = await readFile(path.join(dir, `${document.id}.bin`));
+  return settleDocument(state, document, stored, origin);
 }
 
 async function acceptFile(
@@ -84,13 +109,25 @@ async function acceptFile(
   bytes: Buffer,
 ): Promise<MedicalDocument> {
   let name = safeName(fileName);
-  const hash = contentHash(bytes);
+  let payload = bytes;
+  if (isHeicContainer(payload)) {
+    try {
+      payload = await heicToJpeg(payload);
+      name = jpegName(name);
+    } catch {
+      const failed = refused(state, name, payload, "Снимок HEIC не удалось перевести в JPEG. В разбор он не вошёл.");
+      return failed;
+    }
+  } else if (HEIC_EXT.has(extension(name)) && payload[0] === 0xff && payload[1] === 0xd8) {
+    name = jpegName(name);
+  }
+  const hash = contentHash(payload);
   const existing = state.documents.find((item) => item.contentHash === hash && item.pipelineVersion === PIPELINE_VERSION);
   if (existing) return existing;
 
   let ext = extension(name);
-  if (!TEXT_EXT.has(ext) && !IMAGE_EXT.has(ext) && !KEEP_EXT.has(ext)) {
-    const sniffed = sniffExt(bytes);
+  if (!TEXT_EXT.has(ext) && !WORD_EXT.has(ext) && !IMAGE_EXT.has(ext) && !KEEP_EXT.has(ext)) {
+    const sniffed = sniffExt(payload);
     if (sniffed) {
       ext = sniffed;
       if (!name.toLowerCase().endsWith(`.${sniffed}`)) {
@@ -99,11 +136,11 @@ async function acceptFile(
     }
   }
   const id = newId();
-  const allowed = TEXT_EXT.has(ext) || IMAGE_EXT.has(ext) || KEEP_EXT.has(ext);
+  const allowed = TEXT_EXT.has(ext) || WORD_EXT.has(ext) || IMAGE_EXT.has(ext) || KEEP_EXT.has(ext);
   const base = {
     id,
     fileName: name,
-    byteSize: bytes.length,
+    byteSize: payload.length,
     contentHash: hash,
     pipelineVersion: PIPELINE_VERSION,
     studyDate: null,
@@ -111,19 +148,15 @@ async function acceptFile(
     createdAt: new Date().toISOString(),
   };
 
-  if (!allowed || bytes.length === 0 || bytes.length > MAX_BYTES || !looksLike(bytes, ext)) {
-    const failed: MedicalDocument = {
-      ...base,
-      status: "failed",
-      statusLabel: "Не удалось разобрать",
-      note: "Файл не прошёл проверку типа или размера и в разбор не вошёл.",
-    };
-    state.documents.push(failed);
-    return failed;
+  if (!allowed || payload.length === 0 || payload.length > MAX_BYTES || !looksLike(payload, ext)) {
+    const note = looksLikeLegacyDoc(payload)
+      ? "Старый файл Word .doc не читается. Сохраните его как .docx — тогда текст войдёт в разбор."
+      : "Файл не прошёл проверку типа или размера и в разбор не вошёл.";
+    return refused(state, name, payload, note, base);
   }
 
-  await writeFile(path.join(dir, `${id}.bin`), bytes);
-  await writeBinary(`${path.basename(dir)}/${id}.bin`, bytes);
+  await writeFile(path.join(dir, `${id}.bin`), payload);
+  await writeBinary(`${path.basename(dir)}/${id}.bin`, payload);
   const queued: MedicalDocument = {
     ...base,
     status: "queued",
@@ -205,6 +238,19 @@ export async function settleDocument(
       document.status = "anonymization_unconfirmed";
       document.statusLabel = "PDF сохранён отдельно";
       document.note = "В файле не нашлось текстового слоя. Строки не выдуманы, в разбор он не вошёл.";
+      state.report = null;
+      return document;
+    }
+  } else if (ext === "docx") {
+    try {
+      decoded = await extractDocxText(bytes);
+    } catch {
+      decoded = "";
+    }
+    if (!decoded.trim()) {
+      document.status = "anonymization_unconfirmed";
+      document.statusLabel = "Word сохранён отдельно";
+      document.note = "В файле Word не нашлось текста. Строки не выдуманы, в разбор он не вошёл.";
       state.report = null;
       return document;
     }

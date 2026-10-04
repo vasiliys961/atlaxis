@@ -19,6 +19,12 @@ export const EXPLAIN_SYSTEM = `Ты отвечаешь с компетенцие
 Пиши по-русски, плотно, законченными абзацами. Без решёток, таблиц, списков со звёздами и без канцелярита.`;
 
 const TREATMENT = /ставлю диагноз|ваш диагноз|это диагноз|назначаю|принимайте|отмените|схема лечения|терапевтическ(?:ая|ую) доз/i;
+const FINDING_MARK = "Обсудить находку:";
+
+export function findingBrief(question: string): string {
+  if (!question.startsWith(FINDING_MARK)) return "";
+  return "Это одна находка с листа. Поясни только её: что записано, какой референс рядом и какая отметка уже стоит в строке. Числа повторяй только из находки и из сведений. Новую разницу, процент, диагноз и назначение не добавляй.";
+}
 
 function dossier(report: ReportView): string {
   return [
@@ -81,6 +87,7 @@ async function explain(state: OwnerState, question: string): Promise<string> {
       if (saved?.notes?.length) theme.notes = saved.notes;
     }
   }
+  const brief = findingBrief(question);
   const prompt = `${EXPLAIN_SYSTEM}
 
 Сведения из документов:
@@ -89,18 +96,23 @@ ${dossier(report)}
 Предыдущий разговор:
 ${priorTurns(state.chat)}
 
+${brief}
+
 Вопрос пациента:
 ${question}`;
   const first = route === "opus" ? OPUS : SONNET;
   try {
     const text = await polzaText(first.id, prompt, first.id === OPUS.id ? 2200 : 900);
     if (acceptExplanation(text, state)) return text;
-    if (first.id === OPUS.id) return "Ответ не показан: в нём появились диагноз, лечение или числа, которых нет в документах.";
+    if (first.id === OPUS.id && !brief) return "Ответ не показан: в нём появились диагноз, лечение или числа, которых нет в документах.";
   } catch {
-    if (first.id === OPUS.id) return "Не удалось получить разъяснение. Вопрос остался здесь, наружу ушли только уже собранные сведения.";
+    if (first.id === OPUS.id && !brief) return "Не удалось получить разъяснение. Вопрос остался здесь, наружу ушли только уже собранные сведения.";
   }
+  const reviewPrompt = brief
+    ? `${prompt}\n\nПрошлое пояснение не показано. Напиши заново три или четыре предложения только по этой находке. Без диагноза, без назначения, без новой разницы и без процента.`
+    : prompt;
   try {
-    const review = await polzaText(OPUS.id, prompt, 2200);
+    const review = await polzaText(OPUS.id, reviewPrompt, 2200);
     return acceptExplanation(review, state)
       ? review
       : "Ответ не показан: в нём появились диагноз, лечение или числа, которых нет в документах.";

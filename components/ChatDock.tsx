@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { DISCUSS_EVENT } from "@/lib/discuss";
 import type { ChatTurn } from "@/lib/types";
 
 function readable(text: string): string {
@@ -20,15 +21,67 @@ export function ChatDock() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const thread = useRef<HTMLDivElement>(null);
+  const queue = useRef<{ text: string; restore: boolean }[]>([]);
+  const sending = useRef(false);
+  const spoke = useRef(false);
+
+  const deliver = useCallback(async (message: string, restore: boolean) => {
+    const text = message.trim();
+    if (!text) return;
+    spoke.current = true;
+    if (sending.current) {
+      queue.current.push({ text, restore });
+      return;
+    }
+    sending.current = true;
+    setCollapsed(false);
+    setPending(true);
+    setError("");
+    setMessages((current) => [...current, { role: "user", text, at: new Date().toISOString() }]);
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Не удалось ответить.");
+      setMessages(body.messages as ChatTurn[]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Не удалось ответить.");
+      if (restore) setDraft(text);
+    } finally {
+      sending.current = false;
+      setPending(false);
+      const next = queue.current.shift();
+      if (next) void deliver(next.text, next.restore);
+    }
+  }, []);
 
   useEffect(() => {
+    function onDiscuss(event: Event) {
+      const message = (event as CustomEvent<string>).detail;
+      if (typeof message === "string") void deliver(message, false);
+    }
+    window.addEventListener(DISCUSS_EVENT, onDiscuss);
+    return () => window.removeEventListener(DISCUSS_EVENT, onDiscuss);
+  }, [deliver]);
+
+  useEffect(() => {
+    let stop = false;
     void fetch("/api/chat")
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? "Чат не открылся.");
+        if (stop || spoke.current) return;
         setMessages(body.messages as ChatTurn[]);
       })
-      .catch((reason: Error) => setError(reason.message));
+      .catch((reason: Error) => {
+        if (!stop) setError(reason.message);
+      });
+    return () => {
+      stop = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -40,25 +93,9 @@ export function ChatDock() {
   async function send(event: React.FormEvent) {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || pending) return;
-    setPending(true);
-    setError("");
+    if (!message) return;
     setDraft("");
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Не удалось ответить.");
-      setMessages(body.messages as ChatTurn[]);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось ответить.");
-      setDraft(message);
-    } finally {
-      setPending(false);
-    }
+    await deliver(message, true);
   }
 
   return (
@@ -71,7 +108,7 @@ export function ChatDock() {
         </span>
         <div>
           <h2>Профессор</h2>
-          <p>Спросите по вашим анализам. Разъясняет сведения, без диагноза и без лечения.</p>
+          <p>Кнопка «Профессору» у находки отправляет её сюда. Пояснение без диагноза и без лечения.</p>
         </div>
         <button className="secondary" type="button" onClick={() => setCollapsed((value) => !value)}>
           {collapsed ? "Открыть" : "Свернуть"}
@@ -79,7 +116,7 @@ export function ChatDock() {
       </header>
       <div className="chat-thread" ref={thread}>
         {messages.length === 0 ? (
-          <p className="chat-answer">Здравствуйте. Спросите, что значат цифры, как они менялись и что из комплекта стоит показать врачу.</p>
+          <p className="chat-answer">Здравствуйте. Находку с листа можно отправить кнопкой «Профессору». Я поясню, что в ней записано, без диагноза и без лечения.</p>
         ) : null}
         {messages.map((item) => (
           <p key={`${item.at}-${item.role}-${item.text.slice(0, 24)}`} className={item.role === "user" ? "chat-user" : "chat-answer"}>

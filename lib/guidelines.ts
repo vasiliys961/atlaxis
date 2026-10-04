@@ -1,3 +1,5 @@
+import { sonarFoundRussian } from "./guidelines-search";
+
 export type Guideline = {
   id: string;
   organization: string;
@@ -97,12 +99,18 @@ export function catalogEntries(region: Guideline["region"]): CatalogEntry[] {
   return [...guidelinesFor("EU"), ...guidelinesFor("US")].map((item) => toEntry(item, "offered"));
 }
 
-export function guidelineSentence(region: Guideline["region"]): string {
+export function guidelineSentence(region: Guideline["region"], search?: string | null): string {
   const regionName = region === "RU" ? "России" : region === "EU" ? "Европы" : "США";
   const all = guidelinesFor(region);
   const current = currentGuidelines(region);
   if (all.length === 0) {
-    return `Для ${regionName} в каталоге этой поставки нет записи, которую можно процитировать. Ниже предложены европейские и американские записи этого же каталога. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.`;
+    if (search && sonarFoundRussian(search)) {
+      return "Sonar нашёл опубликованную российскую рекомендацию. Цитата ниже: это поиск, не запись каталога. Рядом остаются европейские и американские записи. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
+    }
+    if (search) {
+      return "Sonar не нашёл российскую рекомендацию. Ниже есть записи США и Европы. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
+    }
+    return "Российской записи в каталоге нет. Sonar ищет опубликованные рекомендации по уже загруженным анализам. Если не найдёт, ниже остаются европейские и американские записи. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
   }
   const used = current.map((item) => `${item.organization}, ${item.title}, версия ${item.version}`).join("; ");
   const older = all.filter((item) => item.supersededBy);

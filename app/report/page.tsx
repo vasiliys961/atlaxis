@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { discussFinding } from "@/lib/discuss";
 import { targetMark } from "@/lib/guidelines";
 import { EYES_MODEL, SONAR_MODEL } from "@/lib/models";
 import { writerFor } from "@/lib/router";
@@ -15,6 +16,17 @@ function writtenWhen(iso: string): string {
 
 function plain(text: string): string {
   return text.replace(/[#*`]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function SonarNote({ text }: { text?: string }) {
+  if (!text) return null;
+  return (
+    <article className="note">
+      <h3>Что нашёл Sonar</h3>
+      <p>{plain(text)}</p>
+      <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
+    </article>
+  );
 }
 
 function Lines({ text }: { text: string }) {
@@ -35,13 +47,35 @@ function Quote({ source }: { source: ReportBlock["sources"][number] }) {
   );
 }
 
+function Discuss({ text }: { text: string }) {
+  const finding = text.replace(/\s+/g, " ").trim();
+  if (!finding) return null;
+  return (
+    <button type="button" className="discuss" onClick={() => discussFinding(finding)}>
+      Профессору
+    </button>
+  );
+}
+
+function Finding({ text, children }: { text: string; children: ReactNode }) {
+  return (
+    <div className="finding">
+      <div className="finding-body">{children}</div>
+      <Discuss text={text} />
+    </div>
+  );
+}
+
 function TimelineRow({ event }: { event: TimelineEvent }) {
   const when = event.date ?? "Дата не указана";
+  const text = `${when}. ${event.text}`;
   return (
-    <details className="fact">
-      <summary>{when}. {event.text}</summary>
-      <Quote source={event.source} />
-    </details>
+    <Finding text={text}>
+      <details className="fact">
+        <summary>{text}</summary>
+        <Quote source={event.source} />
+      </details>
+    </Finding>
   );
 }
 
@@ -56,20 +90,24 @@ function Statements({ block }: { block: ReportBlock }) {
         const source = block.sources[index];
         if (!source) return null;
         return (
-          <details key={`${source.documentId}-${source.line}-${index}`} className="fact">
-            <summary>{line}</summary>
-            <Quote source={source} />
-          </details>
+          <Finding key={`${source.documentId}-${source.line}-${index}`} text={line}>
+            <details className="fact">
+              <summary>{line}</summary>
+              <Quote source={source} />
+            </details>
+          </Finding>
         );
       }) : oneStatement ? (
-        <details className="fact">
-          <summary>{lines[0]}</summary>
-          {block.sources.map((source) => (
-            <Quote key={`${source.documentId}-${source.line}-${source.excerpt}`} source={source} />
-          ))}
-        </details>
+        <Finding text={lines[0] ?? ""}>
+          <details className="fact">
+            <summary>{lines[0]}</summary>
+            {block.sources.map((source) => (
+              <Quote key={`${source.documentId}-${source.line}-${source.excerpt}`} source={source} />
+            ))}
+          </details>
+        </Finding>
       ) : (
-        <>
+        <Finding text={block.body}>
           <Lines text={block.body} />
           {block.sources.length > 0 ? (
             <details>
@@ -79,7 +117,7 @@ function Statements({ block }: { block: ReportBlock }) {
               ))}
             </details>
           ) : null}
-        </>
+        </Finding>
       )}
     </>
   );
@@ -240,7 +278,9 @@ export default function ReportPage() {
         <section className="section">
           <h2>Чего в комплекте нет</h2>
           {report.gaps.map((gap) => (
-            <p key={gap} className="question">{gap}</p>
+            <Finding key={gap} text={gap}>
+              <p className="question">{gap}</p>
+            </Finding>
           ))}
         </section>
       ) : null}
@@ -261,7 +301,9 @@ export default function ReportPage() {
         <section className="section">
           <h2>Что сказать нельзя</h2>
           {report.cannotSay.map((line) => (
-            <p key={line} className="question">{line}</p>
+            <Finding key={line} text={line}>
+              <p className="question">{line}</p>
+            </Finding>
           ))}
         </section>
       ) : null}
@@ -270,7 +312,9 @@ export default function ReportPage() {
         <section className="section">
           <h2>Что взять на приём</h2>
           {report.questions.map((question) => (
-            <p key={question} className="question">{question}</p>
+            <Finding key={question} text={question}>
+              <p className="question">{question}</p>
+            </Finding>
           ))}
         </section>
       ) : null}
@@ -278,6 +322,7 @@ export default function ReportPage() {
       <section className="section">
         <h2>Какие рекомендации смотрели</h2>
         <p>{report.guidelineNote}</p>
+        {report.region === "RU" ? <SonarNote text={report.guidelineSearch} /> : null}
         {report.catalog?.map((item) => {
           const label = item.origin === "offered"
             ? `${item.standing === "current" ? "Предложена" : "Предложена и актуальной не считается"}: ${item.place}`
@@ -291,13 +336,7 @@ export default function ReportPage() {
             </p>
           );
         })}
-        {report.guidelineSearch ? (
-          <article className="note">
-            <h3>Что нашёл Sonar</h3>
-            <p>{plain(report.guidelineSearch)}</p>
-            <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
-          </article>
-        ) : null}
+        {report.region === "RU" ? null : <SonarNote text={report.guidelineSearch} />}
       </section>
 
       <section className="footer-note">
@@ -305,7 +344,6 @@ export default function ReportPage() {
         {report.limits.map((limit) => (
           <p key={limit} className="quiet">{limit}</p>
         ))}
-        <p><Link href="/review">Форма проверки качества</Link></p>
       </section>
     </article>
   );
