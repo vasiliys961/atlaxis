@@ -589,7 +589,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     ...report,
     status: "blocked",
     blockReasons: [...new Set(reasons)],
-    headline: "Разбор не показан",
+    headline: "Отчёт не прошёл проверку",
     intro: "Проверка остановила текст до выдачи.",
     themes: [],
     changes: [],

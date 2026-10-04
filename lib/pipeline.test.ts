@@ -15,6 +15,7 @@ import { readLuna, routeQuestion, writerFor } from "./router";
 import { parseDocument } from "./parse";
 import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
+import { qualityChecks } from "./checks";
 import { buildReport, validateReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 
@@ -271,6 +272,7 @@ test("a ready file that still has a contact is not shown", () => {
   });
   const report = buildReport(state);
   assert.equal(report.status, "blocked");
+  assert.equal(report.headline, "Отчёт не прошёл проверку");
   assert.match(report.blockReasons.join("\n"), /Обезличивание файла не подтверждено/);
   assert.equal(report.timeline?.length, 0);
   assert.doesNotMatch(JSON.stringify(report), /ivan@example.com/);
@@ -335,6 +337,46 @@ test("a read image stays beside the same-month blank and adds no measurement", (
   assert.match(report.relationships.map((item) => item.body).join("\n"), /Ясной связи/);
   assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал|диагноз\s*:/);
   assert.equal(report.relationships[0]?.sources.length, 2);
+});
+
+test("quality checks stay separate counts", () => {
+  const state = emptyState();
+  state.documents.push({
+    id: "a",
+    fileName: "a.txt",
+    byteSize: 1,
+    contentHash: "1",
+    pipelineVersion: "t",
+    status: "ready",
+    statusLabel: "Готово",
+    note: "",
+    studyDate: "2024-03-12",
+    anonymizedText: "Гемоглобин 140 г/л",
+    createdAt: "",
+  });
+  state.facts.push({
+    id: "dated",
+    documentId: "a",
+    concept: "HGB",
+    label: "гемоглобин",
+    value: 140,
+    valueText: "140",
+    unit: "г/л",
+    date: "2024-03-12",
+    dateStatus: "known",
+    referenceLow: null,
+    referenceHigh: null,
+    line: 1,
+    excerpt: "Гемоглобин 140 г/л",
+    extraction: "text",
+    status: "extracted",
+  });
+  state.report = buildReport(state);
+  const checks = qualityChecks(state);
+  assert.equal(checks.length, 7);
+  assert.equal(checks.find((item) => item.label === "Верность даты")?.text, "1 из 1");
+  assert.match(checks.find((item) => item.label === "Пробелы без поручения")?.text ?? "", /из/);
+  assert.doesNotMatch(checks.map((item) => `${item.label} ${item.text}`).join("\n"), /точность|%/);
 });
 
 test("invented dose blocks the report", () => {

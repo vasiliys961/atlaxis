@@ -1,3 +1,4 @@
+import { qualityChecks } from "@/lib/checks";
 import { newId } from "@/lib/parse";
 import { ownerId } from "@/lib/owner";
 import { reviewSchema } from "@/lib/schemas";
@@ -7,8 +8,11 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const reviews = await withOwner(ownerId(), async (state) => state.reviews);
-    return Response.json({ reviews });
+    const payload = await withOwner(ownerId(), async (state) => ({
+      reviews: state.reviews,
+      checks: qualityChecks(state),
+    }));
+    return Response.json(payload);
   } catch {
     return Response.json({ error: "Не удалось открыть разборы." }, { status: 400 });
   }
