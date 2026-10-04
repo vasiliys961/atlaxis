@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { anonymizeText } from "./anonymize";
 import { AXES, CLUSTERS } from "./catalog";
+import { dropDocument } from "./drop-document";
 import { findingQuestion, sheetQuestion } from "./discuss";
 import { patientFileNote } from "./patient-note";
 import { askDoctorOpus } from "./doctor-opus";
@@ -20,6 +21,48 @@ import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
 import { buildReport, validateReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
+
+test("dropping one file leaves the others", () => {
+  const state = emptyState();
+  const file = (id: string, fileName: string): OwnerState["documents"][number] => ({
+    id,
+    fileName,
+    byteSize: 1,
+    contentHash: id,
+    pipelineVersion: "test",
+    status: "ready",
+    statusLabel: "Готово",
+    note: "",
+    studyDate: "2024-03-12",
+    anonymizedText: "",
+    createdAt: "2024-03-12T00:00:00.000Z",
+  });
+  state.documents.push(file("a", "один.txt"), file("b", "два.txt"));
+  state.facts.push({
+    id: "fa",
+    documentId: "a",
+    concept: "HGB",
+    label: "гемоглобин",
+    value: 108,
+    valueText: "108",
+    unit: "г/л",
+    referenceLow: null,
+    referenceHigh: null,
+    line: 1,
+    excerpt: "гемоглобин 108",
+    date: "2024-03-12",
+    dateStatus: "known",
+    extraction: "text",
+    status: "extracted",
+  });
+  state.facts.push({ ...state.facts[0], id: "fb", documentId: "b", value: 128, valueText: "128" });
+  state.chat.push({ role: "user", text: "вопрос", at: "2024-03-12T00:00:00.000Z" });
+  assert.equal(dropDocument(state, "a"), true);
+  assert.deepEqual(state.documents.map((item) => item.fileName), ["два.txt"]);
+  assert.deepEqual(state.facts.map((item) => item.documentId), ["b"]);
+  assert.equal(state.chat.length, 1);
+  assert.equal(dropDocument(state, "a"), false);
+});
 
 test("a theme is retold on its own and not as the whole chart", () => {
   const prompt = themePrompt("Кровь", "гемоглобин 108 г/л");

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { discussFinding, discussSheet } from "@/lib/discuss";
 import { targetMark } from "@/lib/guidelines";
 import { patientFileNote } from "@/lib/patient-note";
@@ -123,29 +123,22 @@ function Statements({ block }: { block: ReportBlock }) {
   );
 }
 
-function ClearKit({ busy, onClear }: { busy: boolean; onClear: () => void }) {
-  return (
-    <button className="danger" type="button" onClick={onClear} disabled={busy}>
-      {busy ? "Очищаем…" : "Очистить"}
-    </button>
-  );
-}
-
 export default function ReportPage() {
   const [report, setReport] = useState<ReportView | null>(null);
   const [error, setError] = useState("");
-  const [clearing, setClearing] = useState(false);
-  const gone = useRef(false);
+  const [dropping, setDropping] = useState<string | null>(null);
 
-  async function clearKit() {
-    gone.current = true;
-    setClearing(true);
+  async function removeDocument(id: string) {
+    setDropping(id);
     setError("");
-    const response = await fetch("/api/privacy/delete", { method: "POST" });
+    const response = await fetch("/api/documents", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
     if (!response.ok) {
-      gone.current = false;
-      setClearing(false);
-      setError("Не удалось очистить разбор.");
+      setDropping(null);
+      setError("Не удалось удалить файл. Он остался в списке.");
       return;
     }
     window.location.assign("/");
@@ -159,12 +152,12 @@ export default function ReportPage() {
         const response = await fetch("/api/documents");
         const body = await response.json();
         if (!response.ok) throw new Error(body.error ?? "Не удалось собрать разбор.");
-        if (stop || gone.current) return;
+        if (stop) return;
         if (body.report) setReport(body.report as ReportView);
         else if (!body.pending && !body.refreshing) setReport({ status: "empty" } as ReportView);
         if (body.pending || body.refreshing) timer = window.setTimeout(() => void pull(), 2500);
       } catch (reason) {
-        if (!stop && !gone.current) setError(reason instanceof Error ? reason.message : "Не удалось собрать разбор.");
+        if (!stop) setError(reason instanceof Error ? reason.message : "Не удалось собрать разбор.");
       }
     }
     void pull();
@@ -179,8 +172,6 @@ export default function ReportPage() {
     return (
       <article className="sheet">
         <p className="quiet">Собираем разбор…</p>
-        <p className="quiet">Если на экране остался прошлый комплект, его можно стереть. Файлы, лист и переписка с профессором удалятся.</p>
-        <ClearKit busy={clearing} onClear={() => void clearKit()} />
       </article>
     );
   }
@@ -191,10 +182,7 @@ export default function ReportPage() {
         <p className="kicker">Разбор</p>
         <h1>Сначала нужны <em>документы</em></h1>
         <p className="lead">Загрузите бланк. Здесь будет один текст: что нашлось, как это менялось и где записи не сходятся.</p>
-        <p className="sheet-ask">
-          <Link className="button" href="/">К документам</Link>
-          <ClearKit busy={clearing} onClear={() => void clearKit()} />
-        </p>
+        <p><Link className="button" href="/">К документам</Link></p>
       </article>
     );
   }
@@ -209,8 +197,7 @@ export default function ReportPage() {
         {report.status === "ready" ? (
           <p className="sheet-ask">
             <button type="button" className="secondary" onClick={() => discussSheet()}>Весь разбор профессору</button>
-            <ClearKit busy={clearing} onClear={() => void clearKit()} />
-            <span className="quiet">Кнопка у строки отправляет одну находку. «Весь разбор профессору» отправляет лист целиком. «Очистить» стирает файлы, лист и переписку.</span>
+            <span className="quiet">Кнопка у строки отправляет одну находку. «Весь разбор профессору» отправляет лист целиком. Лишний файл удаляется своей кнопкой, остальные остаются.</span>
           </p>
         ) : null}
       </header>
@@ -230,6 +217,9 @@ export default function ReportPage() {
             <div key={document.id} className="file-chip">
               <strong>{document.name}</strong>
               <div>{document.statusLabel}. {patientFileNote(document.note)}</div>
+              <button className="danger file-drop" type="button" onClick={() => void removeDocument(document.id)} disabled={dropping !== null}>
+                {dropping === document.id ? "Удаляем…" : "Удалить"}
+              </button>
             </div>
           ))}
         </div>

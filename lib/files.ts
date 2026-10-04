@@ -59,6 +59,14 @@ export async function writeBinary(key: string, bytes: Buffer): Promise<void> {
   await put(key, bytes, { access: "private", addRandomSuffix: false, allowOverwrite: true });
 }
 
+export async function removeKey(key: string): Promise<void> {
+  await rm(localPath(key), { force: true });
+  if (!useBlob()) return;
+  const { del, get } = await import("@vercel/blob");
+  const file = await get(key, { access: "private", useCache: false });
+  if (file?.statusCode === 200) await del(file.blob.url);
+}
+
 export async function removePrefix(prefix: string): Promise<void> {
   if (useBlob()) {
     const { del, list } = await import("@vercel/blob");

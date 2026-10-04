@@ -104,6 +104,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .meta { color: var(--ink-2); font-size: 14px; margin: 4px 0 0; }
 .pill { border-radius: 999px; padding: 6px 10px; background: var(--green-l); color: var(--green-d); font-size: 13px; font-weight: 650; }
 .pill.wait { background: var(--clay-l); color: #7a4426; }
+button.file-drop { flex: none; padding: 6px 12px; font-size: 13px; }
 
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 22px; }
 .step b { display: block; margin: 8px 0 6px; font-family: var(--serif); font-weight: 500; font-size: 22px; }

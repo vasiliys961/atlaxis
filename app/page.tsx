@@ -22,6 +22,7 @@ export default function DocumentsPage() {
   const [region, setRegion] = useState<Region>("RU");
   const [error, setError] = useState("");
   const [pending, setPending] = useState<"upload" | "delete" | null>(null);
+  const [dropping, setDropping] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -123,6 +124,22 @@ export default function DocumentsPage() {
     setPhoneCode(body.code ?? "");
   }
 
+  async function removeDocument(id: string) {
+    setDropping(id);
+    setError("");
+    const response = await fetch("/api/documents", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setDropping(null);
+    if (!response.ok) {
+      setError("Не удалось удалить файл. Он остался в списке.");
+      return;
+    }
+    await load();
+  }
+
   async function removeAll() {
     setPending("delete");
     setError("");
@@ -185,6 +202,9 @@ export default function DocumentsPage() {
                 <span className="name">{document.fileName}</span>
                 <span className="quiet">{document.studyDate ? `${document.studyDate}. ` : ""}{document.factCount > 0 ? `${document.factCount} изм.` : patientFileNote(document.note)}</span>
                 <span className={document.status === "ready" ? "pill" : "pill wait"}>{document.statusLabel}</span>
+                <button className="danger file-drop" type="button" onClick={() => void removeDocument(document.id)} disabled={dropping !== null || pending !== null}>
+                  {dropping === document.id ? "Удаляем…" : "Удалить"}
+                </button>
               </li>
             ))}
           </ul>
@@ -210,7 +230,7 @@ export default function DocumentsPage() {
               <p>Снимок читается в показатели, которые совпали со словарём. Если текст на изображении не принят, числа с него в разбор не входят.</p>
               <p>Разбор — один текст. Он показывает, что написано, как это менялось и где записи не сходятся. Диагноз и лечение он не назначает.</p>
               <p>У каждой находки есть кнопка «Профессору»: она отправляет одну строку. «Весь разбор профессору» в начале листа отправляет комплект целиком. Профессор поясняет, как это читать вместе, и не ставит диагноз.</p>
-              <p>«Удалить мои данные» стирает файлы этого разбора.</p>
+              <p>У каждого файла своя кнопка «Удалить». Остальные файлы остаются. «Удалить мои данные» стирает весь комплект и спрашивает ещё раз.</p>
             </div>
             <div className="actions plain">
               <button type="button" onClick={() => setGuideOpen(false)}>Понятно</button>

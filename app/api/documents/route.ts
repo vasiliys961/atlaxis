@@ -1,4 +1,6 @@
 import { audit } from "@/lib/audit";
+import { dropDocument } from "@/lib/drop-document";
+import { removeKey } from "@/lib/files";
 import { ownerId } from "@/lib/owner";
 import { stageFile } from "@/lib/ingest";
 import { catalogEntries, guidelineSentence } from "@/lib/guidelines";
@@ -57,5 +59,25 @@ export async function POST(request: Request) {
     return Response.json({ documents });
   } catch {
     return Response.json({ error: "Не удалось принять файл." }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const body = await request.json() as { id?: unknown };
+    const documentId = typeof body.id === "string" ? body.id : "";
+    if (!documentId) return Response.json({ error: "Файл не выбран." }, { status: 400 });
+    const id = ownerId();
+    const removed = await withOwner(id, async (state) => {
+      const ok = dropDocument(state, documentId);
+      if (ok) audit(state, "delete", documentId);
+      return ok;
+    });
+    if (!removed) return Response.json({ error: "Файл уже не в списке." }, { status: 404 });
+    await removeKey(`${id}/${documentId}.bin`);
+    continueAfterResponse(drainOwner(id));
+    return Response.json({ deleted: documentId });
+  } catch {
+    return Response.json({ error: "Не удалось удалить файл. Он остался в списке." }, { status: 400 });
   }
 }
