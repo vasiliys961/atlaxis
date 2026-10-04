@@ -1,5 +1,3 @@
-import { readFile } from "fs/promises";
-import path from "path";
 import { audit } from "@/lib/audit";
 import { ownerId } from "@/lib/owner";
 import { stageFile } from "@/lib/ingest";
@@ -59,28 +57,5 @@ export async function POST(request: Request) {
     return Response.json({ documents });
   } catch {
     return Response.json({ error: "Не удалось принять файл." }, { status: 400 });
-  }
-}
-
-export async function PUT() {
-  try {
-    const id = ownerId();
-    const documents = await withOwner(id, async (state, dir) => {
-      const fixtures = ["blank-2024.txt", "blank-2025.txt", "labs.pdf"];
-      const saved = [];
-      for (const name of fixtures) {
-        const bytes = await readFile(path.join(process.cwd(), "fixtures", name));
-        const document = await stageFile(state, dir, name, bytes);
-        audit(state, "upload", document.id);
-        if (document.status === "queued") enqueueDocument(state, document.id, document.fileName);
-        const { anonymizedText: _text, ...safe } = document;
-        saved.push(safe);
-      }
-      return saved;
-    });
-    continueAfterResponse(drainOwner(id));
-    return Response.json({ documents });
-  } catch {
-    return Response.json({ error: "Не удалось открыть пример." }, { status: 400 });
   }
 }

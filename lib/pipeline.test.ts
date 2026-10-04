@@ -5,6 +5,7 @@ import test from "node:test";
 import { anonymizeText } from "./anonymize";
 import { AXES, CLUSTERS } from "./catalog";
 import { findingQuestion } from "./discuss";
+import { patientFileNote } from "./patient-note";
 import { askDoctorOpus } from "./doctor-opus";
 import { EXPLAIN_SYSTEM, acceptExplanation, findingBrief } from "./explain";
 import { guidelineSentence } from "./guidelines";
@@ -411,6 +412,12 @@ test("doctor opus question stays on this machine", async () => {
   assert.match(raw.toString("utf8"), /никуда не ушёл/);
 });
 
+test("a file note for the patient does not name the model", () => {
+  assert.match(patientFileNote("Gemini 3.8 записала снимок в JSON. В разбор попали только строки, которые совпали со словарём показателей."), /Снимок прочитан/);
+  assert.doesNotMatch(patientFileNote("Gemini 3.8 вернула пустой JSON: видимого текста на снимке не нашлось."), /Gemini|JSON/);
+  assert.equal(patientFileNote("Текст прочитан."), "Текст прочитан.");
+});
+
 test("a finding becomes a professor question without a diagnosis request", () => {
   assert.equal(findingQuestion("  ЛПНП 4.8 ммоль/л  "), "Обсудить находку: ЛПНП 4.8 ммоль/л");
   assert.equal(findingQuestion("   "), "");
@@ -457,10 +464,10 @@ test("sonar looks up guidelines for the recorded labs only", () => {
   const found = "Клинические рекомендации Минздрава России по нарушениям липидного обмена, 2023.";
   assert.equal(sonarFoundRussian(found), true);
   assert.equal(sonarFoundRussian(RU_NOT_FOUND), false);
-  assert.match(guidelineSentence("RU", found), /Sonar нашёл опубликованную российскую/);
-  assert.match(guidelineSentence("RU", RU_NOT_FOUND), /Sonar не нашёл российскую рекомендацию/);
+  assert.match(guidelineSentence("RU", found), /Поиск нашёл опубликованную российскую/);
+  assert.match(guidelineSentence("RU", RU_NOT_FOUND), /Поиск не нашёл российскую рекомендацию/);
   assert.match(guidelineSentence("RU", RU_NOT_FOUND), /США и Европы/);
-  assert.match(guidelineSentence("RU"), /Sonar ищет/);
+  assert.match(guidelineSentence("RU"), /Разбор ищет/);
   assert.equal(settleRussianSearch("Нашёлся только источник ESC, 2019.").startsWith(RU_NOT_FOUND), true);
   const state = emptyState();
   state.facts.push({

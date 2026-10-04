@@ -411,7 +411,7 @@ export function buildReport(state: OwnerState): ReportView {
       status: state.documents.length === 0 ? "empty" : "ready",
       blockReasons: [],
       headline: state.documents.length === 0 ? "Разбор появится после документов" : pictures.length > 0 ? `Приложено ${plural(pictures.length, "снимок", "снимка", "снимков")}. Измерения с них не прочитаны.` : "Измерения из файлов не прочитаны",
-      intro: state.documents.length === 0 ? "Загрузите бланк, выписку или откройте пример." : `Файлы сохранены, но строк с показателями в них не нашлось.${pictureNote}`,
+      intro: state.documents.length === 0 ? "Загрузите бланк или выписку." : `Файлы сохранены, но строк с показателями в них не нашлось.${pictureNote}`,
       documents,
       guidelineNote: guidelineNote(state),
       catalog: catalogEntries(state.region),

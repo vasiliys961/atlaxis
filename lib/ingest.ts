@@ -190,8 +190,8 @@ export async function settleDocument(
             document.status = "ready";
             document.statusLabel = "Готово";
             document.note = scrubbed.lines.trim()
-              ? "Gemini 3.8 записала снимок в JSON. В разбор попали только строки, которые совпали со словарём показателей."
-              : "Gemini 3.8 вернула пустой JSON: видимого текста на снимке не нашлось.";
+              ? "Снимок прочитан. В разбор попали только строки, которые совпали со словарём показателей."
+              : "На снимке не нашлось видимого текста. Числа с него в разбор не вошли.";
             document.studyDate = parsed.studyDate;
             document.anonymizedText = scrubbed.json;
             for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });

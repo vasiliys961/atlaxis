@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { patientFileNote } from "@/lib/patient-note";
 import type { MedicalDocument, Region, ReportView } from "@/lib/types";
 
 type ListedDocument = Omit<MedicalDocument, "anonymizedText"> & {
@@ -10,7 +11,7 @@ type ListedDocument = Omit<MedicalDocument, "anonymizedText"> & {
 };
 
 const REGIONS: { id: Region; label: string; hint: string }[] = [
-  { id: "RU", label: "Россия", hint: "Sonar ищет опубликованную российскую рекомендацию. Если не находит, в разборе остаются записи США и Европы с пометкой." },
+  { id: "RU", label: "Россия", hint: "Разбор ищет опубликованную российскую рекомендацию. Если не находит, остаются записи США и Европы с пометкой." },
   { id: "EU", label: "Европа", hint: "В каталоге ESC/EAS 2025. Версия 2019 актуальной не считается. Цель из записи показана с пометкой группы и не становится личной." },
   { id: "US", label: "США", hint: "В каталоге AHA/ACC 2018. Числовой цели в этой записи нет." },
 ];
@@ -122,18 +123,6 @@ export default function DocumentsPage() {
     setPhoneCode(body.code ?? "");
   }
 
-  async function loadExample() {
-    setPending("upload");
-    setError("");
-    const response = await fetch("/api/documents", { method: "PUT" });
-    setPending(null);
-    if (!response.ok) {
-      setError("Не удалось открыть пример.");
-      return;
-    }
-    await load();
-  }
-
   async function removeAll() {
     setPending("delete");
     setError("");
@@ -160,7 +149,6 @@ export default function DocumentsPage() {
           <p className="lead">Загрузите бланки, выписки и снимки. ATLAXIS прочитает их вместе, покажет динамику и места, где записи не сходятся. Диагноз и лечение он не назначает.</p>
           <div className="cta">
             <a className="button" href="#upload">Загрузить документы</a>
-            <button className="secondary" type="button" onClick={() => void loadExample()} disabled={pending !== null}>Посмотреть пример</button>
           </div>
         </div>
         <div className="meds" aria-hidden="true">
@@ -195,7 +183,7 @@ export default function DocumentsPage() {
             {documents.map((document) => (
               <li key={document.id}>
                 <span className="name">{document.fileName}</span>
-                <span className="quiet">{document.studyDate ? `${document.studyDate}. ` : ""}{document.factCount > 0 ? `${document.factCount} изм.` : document.note}</span>
+                <span className="quiet">{document.studyDate ? `${document.studyDate}. ` : ""}{document.factCount > 0 ? `${document.factCount} изм.` : patientFileNote(document.note)}</span>
                 <span className={document.status === "ready" ? "pill" : "pill wait"}>{document.statusLabel}</span>
               </li>
             ))}
@@ -206,7 +194,6 @@ export default function DocumentsPage() {
           <button className="chip" type="button" onClick={() => readyImage.current?.click()} disabled={pending !== null}>Готовый PNG или JPEG</button>
           <input ref={readyImage} hidden type="file" accept=".png,.jpg,.jpeg,.heic,.heif,image/png,image/jpeg,image/heic,image/heif" multiple onChange={(event) => void upload(event.target.files)} />
           <button className="chip" type="button" onClick={() => void openPhone()} disabled={pending !== null}>Со смартфона</button>
-          <button className="chip accent" type="button" onClick={() => void loadExample()} disabled={pending !== null}>Открыть пример: бланки и PDF</button>
         </div>
       </div>
       {error ? <p className="error">{error}</p> : null}

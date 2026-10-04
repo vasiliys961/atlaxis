@@ -2,12 +2,19 @@ import { EYES_MODEL } from "./models";
 import { sanitizeImageReading, type ImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 
-const URL = "https://polza.ai/api/v1/chat/completions";
+const POLZA_URL = "https://polza.ai/api/v1/chat/completions";
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
+function modelAccess(): { key: string; url: string; openRouter: boolean } | null {
+  const openRouter = (process.env.OPENROUTER_API_KEY || "").trim();
+  if (openRouter) return { key: openRouter, url: OPENROUTER_URL, openRouter: true };
+  const polza = (process.env.POLZA_AI_API_KEY || process.env.POLZA_API_KEY || "").trim();
+  if (polza) return { key: polza, url: POLZA_URL, openRouter: false };
+  return null;
+}
 
 export function polzaKey(): string | null {
-  const key = process.env.POLZA_AI_API_KEY || process.env.POLZA_API_KEY || "";
-  const trimmed = key.trim();
-  return trimmed || null;
+  return modelAccess()?.key ?? null;
 }
 
 type Part = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -38,11 +45,15 @@ export async function polzaText(
     throw new Error("image_blocked_from_brain");
   }
   if (!decision.allow) throw new Error(decision.reason);
-  const key = polzaKey();
-  if (!key) throw new Error("polza_key_missing");
-  const response = await fetch(URL, {
+  const access = modelAccess();
+  if (!access) throw new Error("polza_key_missing");
+  const response = await fetch(access.url, {
     method: "POST",
-    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${access.key}`,
+      "content-type": "application/json",
+      ...(access.openRouter ? { "HTTP-Referer": "https://atlaxis-tan.vercel.app", "X-Title": "ATLAXIS" } : {}),
+    },
     body: JSON.stringify({
       model,
       temperature: 0,

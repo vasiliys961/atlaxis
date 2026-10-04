@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { discussFinding } from "@/lib/discuss";
 import { targetMark } from "@/lib/guidelines";
-import { EYES_MODEL, SONAR_MODEL } from "@/lib/models";
+import { patientFileNote } from "@/lib/patient-note";
 import { writerFor } from "@/lib/router";
 import type { ReportBlock, ReportView, TimelineEvent } from "@/lib/types";
 
@@ -18,11 +18,11 @@ function plain(text: string): string {
   return text.replace(/[#*`]/g, "").replace(/\s+/g, " ").trim();
 }
 
-function SonarNote({ text }: { text?: string }) {
+function SearchNote({ text }: { text?: string }) {
   if (!text) return null;
   return (
     <article className="note">
-      <h3>Что нашёл Sonar</h3>
+      <h3>Что нашлось в опубликованных рекомендациях</h3>
       <p>{plain(text)}</p>
       <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
     </article>
@@ -157,7 +157,7 @@ export default function ReportPage() {
       <article className="sheet">
         <p className="kicker">Разбор</p>
         <h1>Сначала нужны <em>документы</em></h1>
-        <p className="lead">Загрузите бланк или откройте пример. Здесь будет один текст: что нашлось, как это менялось и где записи не сходятся.</p>
+        <p className="lead">Загрузите бланк. Здесь будет один текст: что нашлось, как это менялось и где записи не сходятся.</p>
         <p><Link className="button" href="/">К документам</Link></p>
       </article>
     );
@@ -171,36 +171,6 @@ export default function ReportPage() {
         <p className="lead">{report.headline}</p>
         <p className="quiet">{report.intro}</p>
       </header>
-
-      <section className="section">
-        <h2>Модели</h2>
-        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Спокойную тему пересказывает Sonnet 5.5, тему со спорной записью — Opus 5.5. Актуальные рекомендации по уже загруженным анализам ищет Sonar ({SONAR_MODEL}).</p>
-        {report.modelsReady === false ? <p className="quiet">Ключ Пользы AI не задан. Модели не вызываются, разбор собран правилами.</p> : null}
-      </section>
-
-      {report.imageReadings && report.imageReadings.length > 0 ? (
-        <section className="section">
-          <h2>JSON снимков</h2>
-          {report.imageReadings.map((item) => (
-            <article key={item.name} className="note">
-              <h3>{item.name}</h3>
-              <pre>{item.json}</pre>
-            </article>
-          ))}
-        </section>
-      ) : null}
-
-      {report.wording && report.wording.length > 0 ? (
-        <section className="section">
-          <h2>Простыми словами</h2>
-          {report.wording.map((item) => (
-            <article key={item.model} className="note">
-              <h3>{item.label}</h3>
-              <p>{item.text}</p>
-            </article>
-          ))}
-        </section>
-      ) : null}
 
       {report.status === "blocked" ? (
         <div className="notice">
@@ -216,7 +186,7 @@ export default function ReportPage() {
           {report.documents.map((document) => (
             <div key={document.id} className="file-chip">
               <strong>{document.name}</strong>
-              <div>{document.statusLabel}. {document.note}</div>
+              <div>{document.statusLabel}. {patientFileNote(document.note)}</div>
             </div>
           ))}
         </div>
@@ -267,7 +237,7 @@ export default function ReportPage() {
               <h3>{block.title}</h3>
               <Statements block={block} />
               {block.notes?.filter((note) => note.model === writerFor(block).id).map((note) => (
-                <p key={note.model} className="quiet">{note.label}. {plain(note.text)}</p>
+                <p key={note.model} className="quiet">{plain(note.text)}</p>
               ))}
             </article>
           ))}
@@ -322,7 +292,7 @@ export default function ReportPage() {
       <section className="section">
         <h2>Какие рекомендации смотрели</h2>
         <p>{report.guidelineNote}</p>
-        {report.region === "RU" ? <SonarNote text={report.guidelineSearch} /> : null}
+        {report.region === "RU" ? <SearchNote text={report.guidelineSearch} /> : null}
         {report.catalog?.map((item) => {
           const label = item.origin === "offered"
             ? `${item.standing === "current" ? "Предложена" : "Предложена и актуальной не считается"}: ${item.place}`
@@ -336,7 +306,7 @@ export default function ReportPage() {
             </p>
           );
         })}
-        {report.region === "RU" ? null : <SonarNote text={report.guidelineSearch} />}
+        {report.region === "RU" ? null : <SearchNote text={report.guidelineSearch} />}
       </section>
 
       <section className="footer-note">
