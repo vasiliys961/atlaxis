@@ -26,6 +26,7 @@ export default function DocumentsPage() {
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneCode, setPhoneCode] = useState("");
   const [phoneQr, setPhoneQr] = useState("");
+  const [over, setOver] = useState(false);
   const readyImage = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -144,33 +145,60 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <p className="kicker">Документы</p>
-      <h1>Соберите анализы в один разбор</h1>
-      <p className="lead">
-        Загрузите бланки, выписки и снимки. Сервис прочитает их вместе, покажет динамику и места, где записи не сходятся. Диагноз и лечение он не назначает.
-      </p>
+      <section className="hero">
+        <div>
+          <p className="kicker">Личный AI-ассистент по здоровью</p>
+          <h1>Все ваши анализы — <em>в одну картину</em></h1>
+          <p className="lead">Загрузите бланки, выписки и снимки. ATLAXIS прочитает их вместе, покажет динамику и места, где записи не сходятся. Диагноз и лечение он не назначает.</p>
+          <div className="cta">
+            <a className="button" href="#upload">Загрузить документы</a>
+            <button className="secondary" type="button" onClick={() => void loadExample()} disabled={pending !== null}>Посмотреть пример</button>
+          </div>
+        </div>
+        <div className="meds" aria-hidden="true">
+          <div className="med m2"><svg><use href="#d-steth" /></svg><span className="lbl">Пульс</span></div>
+          <div className="med m4"><svg><use href="#d-oxi" /></svg><span className="lbl">Кислород</span></div>
+          <div className="med m1"><svg><use href="#d-micro" /></svg><span className="lbl">Анализы</span></div>
+          <div className="med m3"><svg><use href="#d-therm" /></svg><span className="lbl">Температура</span></div>
+          <div className="med m5"><svg><use href="#d-gauge" /></svg><span className="lbl">Давление</span></div>
+          <div className="hello"><div><b>Профессор — в окне справа.</b> Он разъясняет полученные сведения и не ставит диагноз.</div></div>
+        </div>
+      </section>
 
-      <div className="stage">
-        <label className="drop">
-          <strong>{pending === "upload" ? "Читаем файлы…" : "Перетащите сюда или выберите файлы"}</strong>
-          <span className="quiet">Текст, PDF, снимок. Персональные данные в тексте скрываются до разбора.</span>
-          <span className="button">{pending === "upload" ? "Подождите" : "Выбрать файлы"}</span>
-          <input hidden type="file" multiple accept=".txt,.csv,.md,.pdf,.png,.jpg,.jpeg,.webp,.dcm" onChange={(event) => void upload(event.target.files)} />
-        </label>
-        <div className="actions">
-          <button className="secondary" type="button" onClick={() => setGuideOpen(true)}>
-            Инструкция
-          </button>
-          <button className="secondary" type="button" onClick={() => readyImage.current?.click()} disabled={pending !== null}>
-            Готовый PNG или JPEG
-          </button>
+      <div className="upload" id="upload">
+        <div
+          className={over ? "drop over" : "drop"}
+          onDragEnter={(event) => { event.preventDefault(); setOver(true); }}
+          onDragOver={(event) => { event.preventDefault(); setOver(true); }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(event) => { event.preventDefault(); setOver(false); void upload(event.dataTransfer.files); }}
+        >
+          <div>
+            <h2>{pending === "upload" ? "Читаем файлы…" : "Перетащите сюда или выберите файлы"}</h2>
+            <p className="quiet">Текст, PDF, снимок. Персональные данные в тексте скрываются до разбора.</p>
+          </div>
+          <label className="button">
+            {pending === "upload" ? "Подождите" : "Выбрать файлы"}
+            <input hidden type="file" multiple accept=".txt,.csv,.md,.pdf,.png,.jpg,.jpeg,.webp,.dcm" onChange={(event) => void upload(event.target.files)} />
+          </label>
+        </div>
+        {documents.length > 0 ? (
+          <ul className="doc-list">
+            {documents.map((document) => (
+              <li key={document.id}>
+                <span className="name">{document.fileName}</span>
+                <span className="quiet">{document.studyDate ? `${document.studyDate}. ` : ""}{document.factCount > 0 ? `${document.factCount} изм.` : document.note}</span>
+                <span className={document.status === "ready" ? "pill" : "pill wait"}>{document.statusLabel}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="chips">
+          <button className="chip" type="button" onClick={() => setGuideOpen(true)}>Инструкция</button>
+          <button className="chip" type="button" onClick={() => readyImage.current?.click()} disabled={pending !== null}>Готовый PNG или JPEG</button>
           <input ref={readyImage} hidden type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" multiple onChange={(event) => void upload(event.target.files)} />
-          <button className="secondary" type="button" onClick={() => void openPhone()} disabled={pending !== null}>
-            Со смартфона
-          </button>
-          <button className="secondary" type="button" onClick={() => void loadExample()} disabled={pending !== null}>
-            Открыть пример: бланки и PDF
-          </button>
+          <button className="chip" type="button" onClick={() => void openPhone()} disabled={pending !== null}>Со смартфона</button>
+          <button className="chip accent" type="button" onClick={() => void loadExample()} disabled={pending !== null}>Открыть пример: бланки и PDF</button>
         </div>
       </div>
       {error ? <p className="error">{error}</p> : null}
@@ -217,9 +245,15 @@ export default function DocumentsPage() {
         </Link>
       ) : null}
 
-      <div className="layout">
+      <div className="steps">
+        <article className="card step"><span className="n">01</span><b>Читает вместе</b><span className="quiet">Бланки, выписки и снимки сводятся в одну картину.</span></article>
+        <article className="card step"><span className="n">02</span><b>Находит расхождения</b><span className="quiet">Показывает динамику по датам и места, где записи не сходятся.</span></article>
+        <article className="card step"><span className="n">03</span><b>Не заменяет врача</b><span className="quiet">Диагноз и лечение сервис не назначает.</span></article>
+      </div>
+
+      <div className="grid2">
         <aside className="card">
-          <p className="quiet">Страна рекомендаций</p>
+          <h3>Страна рекомендаций</h3>
           <div className="choice-list">
             {REGIONS.map((item) => (
               <button key={item.id} type="button" className={item.id === region ? "choice selected" : "choice"} onClick={() => void chooseRegion(item.id)}>
@@ -229,36 +263,16 @@ export default function DocumentsPage() {
           </div>
           <p className="quiet hint">{hint}</p>
         </aside>
-
-        <section className="stack">
-          {documents.map((document) => (
-            <article key={document.id} className="doc">
-              <div>
-                <strong>{document.fileName}</strong>
-                <p className="meta">
-                  {document.studyDate ? `${document.studyDate}. ` : ""}
-                  {document.factCount > 0 ? `${document.factCount} изм. ` : ""}
-                  {document.issueCount > 0 ? "Есть нестыковка внутри файла. " : ""}
-                  {document.note}
-                </p>
-              </div>
-              <span className={document.status === "ready" ? "pill" : "pill wait"}>{document.statusLabel}</span>
-            </article>
-          ))}
+        <section className="card">
+          <p className="lead">Ваши данные — только ваши. Персональные данные скрываются до разбора, а удалить всё можно одним нажатием.</p>
           <div className="actions">
             {confirmDelete ? (
               <>
-                <button className="danger" type="button" onClick={() => void removeAll()} disabled={pending !== null}>
-                  {pending === "delete" ? "Удаляем…" : "Да, удалить всё"}
-                </button>
-                <button className="secondary" type="button" onClick={() => setConfirmDelete(false)} disabled={pending !== null}>
-                  Оставить
-                </button>
+                <button className="danger" type="button" onClick={() => void removeAll()} disabled={pending !== null}>{pending === "delete" ? "Удаляем…" : "Да, удалить всё"}</button>
+                <button className="secondary" type="button" onClick={() => setConfirmDelete(false)} disabled={pending !== null}>Оставить</button>
               </>
             ) : (
-              <button className="danger" type="button" onClick={() => setConfirmDelete(true)} disabled={documents.length === 0 || pending !== null}>
-                Удалить мои данные
-              </button>
+              <button className="danger" type="button" onClick={() => setConfirmDelete(true)} disabled={documents.length === 0 || pending !== null}>Удалить мои данные</button>
             )}
           </div>
         </section>

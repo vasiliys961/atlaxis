@@ -50,7 +50,7 @@ export default function ReportPage() {
     return (
       <article className="sheet">
         <p className="kicker">Разбор</p>
-        <h1>Сначала нужны документы</h1>
+        <h1>Сначала нужны <em>документы</em></h1>
         <p className="lead">Загрузите бланк или откройте пример. Здесь будет один текст: что нашлось, как это менялось и где записи не сходятся.</p>
         <p><Link className="button" href="/">К документам</Link></p>
       </article>
@@ -60,9 +60,10 @@ export default function ReportPage() {
   return (
     <article className="sheet">
       <header>
-        <p className="kicker">Справочный разбор</p>
-        <h1>{report.headline}</h1>
-        <p className="lead">{report.intro}</p>
+        <p className="kicker">Разбор</p>
+        <h1>Что говорят <em>ваши записи</em></h1>
+        <p className="lead">{report.headline}</p>
+        <p className="quiet">{report.intro}</p>
       </header>
 
       <section className="section">
