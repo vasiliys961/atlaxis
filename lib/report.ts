@@ -358,10 +358,12 @@ export function buildReport(state: OwnerState): ReportView {
       continue;
     }
     if (!requiredMet) gaps.push(`Для темы «${axis.title}» основной показатель в документах не найден.`);
-    const coverage = requiredMet ? "" : "По теме есть не все показатели.\n";
     themes.push({
       title: axis.title,
-      body: `${coverage}${facts.map(formatFact).join("\n")}`,
+      lead: requiredMet
+        ? "Данных по теме достаточно, чтобы прочитать записанные числа."
+        : "По теме есть не все показатели.",
+      body: facts.map(formatFact).join("\n"),
       sources: facts.map((fact) => sourceFor(state, fact)),
     });
   }
@@ -369,9 +371,10 @@ export function buildReport(state: OwnerState): ReportView {
   if (state.medications.length > 0) {
     themes.push({
       title: "Препараты в тексте",
-      body: `${state.medications
+      lead: "Это цитаты документов, не схема приёма.",
+      body: state.medications
         .map((item) => `${item.name} ${writtenDose(item)}${item.date ? `, ${item.date}` : ""}`)
-        .join("\n")}\nЭто цитаты документов, не схема приёма.`,
+        .join("\n"),
       sources: state.medications.map((item) => {
         const document = state.documents.find((doc) => doc.id === item.documentId);
         return {
@@ -435,7 +438,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     report.headline,
     report.intro,
     report.guidelineNote,
-    ...report.themes.map((item) => item.body),
+    ...report.themes.map((item) => `${item.lead ?? ""}\n${item.body}`),
     ...report.changes.map((item) => item.body),
     ...report.conflicts.map((item) => item.body),
     ...report.relationships.map((item) => item.body),

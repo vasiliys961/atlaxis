@@ -122,6 +122,9 @@ pre { margin: 8px 0 0; white-space: pre-wrap; font: 13px/1.45 var(--mono); }
 .notice { color: var(--warn); background: var(--clay-l); }
 details { margin-top: 8px; color: var(--ink-2); }
 summary { cursor: pointer; }
+.fact { margin: 0 0 10px; }
+.fact > summary { color: var(--ink); }
+.fact > summary::after { content: " · источник"; color: var(--green); font-size: 0.82em; }
 blockquote { margin: 8px 0 0; padding-left: 12px; border-left: 2px solid #d9cbb6; }
 .stack { display: grid; gap: 10px; }
 .hint { margin-top: 12px; }

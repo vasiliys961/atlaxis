@@ -84,6 +84,9 @@ test("blank contradiction, dose split and trend", () => {
   assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /референс этого же бланка/);
   assert.match(report.questions.join("\n"), /Вопрос врачу: .+референс этого же бланка/);
+  const blood = report.themes.find((item) => item.title === "Кровь");
+  assert.equal(blood?.body.split("\n").filter(Boolean).length, blood?.sources.length);
+  assert.match(blood?.lead ?? "", /достаточно/);
   const hemoglobin = state.facts.find((fact) => fact.concept === "HGB");
   assert.equal(hemoglobin?.status, "conflicting");
   const issue = state.issues[0];

@@ -15,17 +15,51 @@ function Lines({ text }: { text: string }) {
   );
 }
 
-function Sources({ block }: { block: ReportBlock }) {
-  if (block.sources.length === 0) return null;
+function Quote({ source }: { source: ReportBlock["sources"][number] }) {
   return (
-    <details>
-      <summary>Откуда это</summary>
-      {block.sources.map((source) => (
-        <blockquote key={`${source.documentId}-${source.line}-${source.excerpt}`}>
-          {source.documentName}, строка {source.line}: {source.excerpt}
-        </blockquote>
-      ))}
-    </details>
+    <blockquote>
+      {source.documentName}, строка {source.line}: {source.excerpt}
+    </blockquote>
+  );
+}
+
+function Statements({ block }: { block: ReportBlock }) {
+  const lines = block.body.split("\n").map((line) => line.trim()).filter(Boolean);
+  const paired = lines.length > 0 && lines.length === block.sources.length;
+  const oneStatement = lines.length === 1 && block.sources.length > 0;
+  return (
+    <>
+      {block.lead ? <p className="quiet">{block.lead}</p> : null}
+      {paired ? lines.map((line, index) => {
+        const source = block.sources[index];
+        if (!source) return null;
+        return (
+          <details key={`${source.documentId}-${source.line}-${index}`} className="fact">
+            <summary>{line}</summary>
+            <Quote source={source} />
+          </details>
+        );
+      }) : oneStatement ? (
+        <details className="fact">
+          <summary>{lines[0]}</summary>
+          {block.sources.map((source) => (
+            <Quote key={`${source.documentId}-${source.line}-${source.excerpt}`} source={source} />
+          ))}
+        </details>
+      ) : (
+        <>
+          <Lines text={block.body} />
+          {block.sources.length > 0 ? (
+            <details>
+              <summary>Откуда это</summary>
+              {block.sources.map((source) => (
+                <Quote key={`${source.documentId}-${source.line}-${source.excerpt}`} source={source} />
+              ))}
+            </details>
+          ) : null}
+        </>
+      )}
+    </>
   );
 }
 
@@ -134,8 +168,7 @@ export default function ReportPage() {
           {report.conflicts.map((block) => (
             <article key={block.body} className="note warn">
               <h3>{block.title}</h3>
-              <Lines text={block.body} />
-              <Sources block={block} />
+              <Statements block={block} />
             </article>
           ))}
         </section>
@@ -147,8 +180,7 @@ export default function ReportPage() {
           {report.changes.map((block) => (
             <article key={block.title + block.body} className="timeline-item">
               <h3>{block.title}</h3>
-              <Lines text={block.body} />
-              <Sources block={block} />
+              <Statements block={block} />
             </article>
           ))}
         </section>
@@ -160,8 +192,7 @@ export default function ReportPage() {
           {report.themes.map((block) => (
             <article key={block.title} className="note">
               <h3>{block.title}</h3>
-              <Lines text={block.body} />
-              <Sources block={block} />
+              <Statements block={block} />
             </article>
           ))}
         </section>
@@ -182,8 +213,7 @@ export default function ReportPage() {
           {report.relationships.map((block) => (
             <article key={block.body} className="note">
               <h3>{block.title}</h3>
-              <Lines text={block.body} />
-              <Sources block={block} />
+              <Statements block={block} />
             </article>
           ))}
         </section>

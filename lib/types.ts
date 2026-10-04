@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-04.5";
+export const PIPELINE_VERSION = "2026-10-04.6";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
@@ -77,6 +77,7 @@ export type SourceRef = {
 export type ReportBlock = {
   title: string;
   body: string;
+  lead?: string;
   sources: SourceRef[];
 };
 
