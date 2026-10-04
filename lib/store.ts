@@ -28,6 +28,7 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
       state.reviews ??= [];
       state.jobs ??= [];
       state.audit ??= [];
+      state.chat ??= [];
     } catch {
       state = emptyState();
     }

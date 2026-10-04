@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ChatDock } from "@/components/ChatDock";
 import { Nav } from "@/components/Nav";
 import "./globals.css";
 
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Nav />
         <main>{children}</main>
+        <ChatDock />
       </body>
     </html>
   );

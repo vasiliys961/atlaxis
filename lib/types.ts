@@ -123,6 +123,12 @@ export type JobRecord = {
   at: string;
 };
 
+export type ChatTurn = {
+  role: "user" | "assistant";
+  text: string;
+  at: string;
+};
+
 export type OwnerState = {
   region: Region;
   documents: MedicalDocument[];
@@ -134,6 +140,7 @@ export type OwnerState = {
   reviews: ReviewFinding[];
   jobs: JobRecord[];
   audit: AuditEvent[];
+  chat: ChatTurn[];
 };
 
 export function emptyState(): OwnerState {
@@ -148,5 +155,6 @@ export function emptyState(): OwnerState {
     reviews: [],
     jobs: [],
     audit: [],
+    chat: [],
   };
 }

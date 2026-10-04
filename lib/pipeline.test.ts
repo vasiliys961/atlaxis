@@ -5,6 +5,7 @@ import test from "node:test";
 import { anonymizeText } from "./anonymize";
 import { AXES, CLUSTERS } from "./catalog";
 import { askDoctorOpus } from "./doctor-opus";
+import { EXPLAIN_SYSTEM, acceptExplanation } from "./explain";
 import { sanitizeImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
@@ -171,4 +172,26 @@ test("doctor opus question stays on this machine", async () => {
     });
   }).finally(() => child.kill());
   assert.match(raw.toString("utf8"), /никуда не ушёл/);
+});
+
+test("chat explains findings and drops diagnosis or treatment", () => {
+  assert.match(EXPLAIN_SYSTEM, /Не ставь диагноз/);
+  assert.match(EXPLAIN_SYSTEM, /Не назначай и не отменяй лечение/);
+  const state = emptyState();
+  state.facts.push({
+    id: "f",
+    documentId: "a",
+    concept: "LDL",
+    label: "ЛПНП",
+    value: 4.8,
+    valueText: "4.8",
+    unit: "ммоль/л",
+    referenceLow: null,
+    referenceHigh: null,
+    line: 1,
+    excerpt: "ЛПНП 4.8 ммоль/л",
+    date: "2024-03-12",
+  });
+  assert.equal(acceptExplanation("ЛПНП в бланке 4.8 ммоль/л. Это выше обычной верхней границы, которую стоит показать врачу.", state), true);
+  assert.equal(acceptExplanation("Ваш диагноз: гиперхолестеринемия. Принимайте аторвастатин.", state), false);
 });
