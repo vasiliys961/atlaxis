@@ -10,10 +10,29 @@ import { acceptGuidelineSearch, guidelineSearchPrompt } from "./guidelines-searc
 import { sanitizeImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
+import { BRAIN_MODELS } from "./models";
 import { parseDocument } from "./parse";
 import { extractPdfText } from "./pdf";
 import { buildReport, validateReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
+
+test("the second brain is gpt 6.1 and not astra", () => {
+  const gpt = BRAIN_MODELS[1];
+  assert.equal(gpt?.id, "openai/gpt-6.1-sol");
+  assert.equal(gpt?.label, "GPT-6.1");
+  assert.doesNotMatch(BRAIN_MODELS.map((model) => model.id).join(" "), /astra/i);
+});
+
+test("one document keeps both numbers, both dates and an inverted pressure", () => {
+  const parsed = parseDocument("Дата исследования: 2024-03-12\nГемоглобин 108 г/л\nГемоглобин 140 г/л\nДата исследования: 2025-01-09\nАД 90/120\nГлюкоза повышена");
+  assert.equal(parsed.facts.filter((fact) => fact.concept === "HGB").length, 2);
+  const text = parsed.issues.map((item) => item.description).join("\n");
+  assert.match(text, /не выбирает одно число/);
+  assert.match(text, /разные даты/);
+  assert.match(text, /не больше нижнего/);
+  assert.match(text, /числа рядом нет/);
+  assert.equal(parsed.issues.find((item) => /не выбирает одно число/.test(item.description))?.otherLine != null, true);
+});
 
 test("dose keeps the written frequency and a broken date stays out", () => {
   const parsed = parseDocument("Дата исследования: 2024-02-31\nАторвастатин 20 мг 1 раз в сутки\nГемоглобин 140 г/л");

@@ -163,6 +163,14 @@ function conflicts(state: OwnerState): ReportBlock[] {
           line: issue.line,
           excerpt: issue.excerpt,
         },
+        ...(issue.otherLine
+          ? [{
+              documentId: issue.documentId,
+              documentName: document?.fileName ?? "документ",
+              line: issue.otherLine,
+              excerpt: issue.otherExcerpt ?? "",
+            }]
+          : []),
       ],
     });
   }
@@ -246,7 +254,7 @@ export function buildReport(state: OwnerState): ReportView {
       docs: state.documents.map((item) => [item.id, item.contentHash, item.status]),
       facts: state.facts.map((item) => [item.documentId, item.concept, item.valueText, item.unit, item.date]),
       medications: state.medications.map((item) => [item.documentId, item.name, item.doseText, item.unit, item.frequency ?? "", item.date]),
-      issues: state.issues.map((item) => [item.documentId, item.line, item.description]),
+      issues: state.issues.map((item) => [item.documentId, item.line, item.otherLine ?? 0, item.description]),
       pipeline: PIPELINE_VERSION,
     }))
     .digest("hex");

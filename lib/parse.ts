@@ -60,6 +60,16 @@ function numberFrom(raw: string): number {
   return Number(raw.replace(",", "."));
 }
 
+function laterThanToday(iso: string): boolean {
+  const now = new Date();
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Date.parse(`${iso}T00:00:00Z`) > today;
+}
+
+function pair(issue: { description: string; line: number; excerpt: string }, other?: { line: number; excerpt: string }) {
+  return other ? { ...issue, otherLine: other.line, otherExcerpt: other.excerpt } : issue;
+}
+
 export function parseDocument(text: string): ParsedDocument {
   const lines = text.split(/\r?\n/);
   let studyDate: string | null = null;
@@ -68,6 +78,8 @@ export function parseDocument(text: string): ParsedDocument {
   const issues: ParsedDocument["issues"] = [];
   let conclusionSaysNormal = false;
   let conclusionLine = 0;
+  let conclusionExcerpt = "";
+  const dates: { date: string; line: number; excerpt: string }[] = [];
 
   lines.forEach((rawLine, index) => {
     const line = rawLine.trim();
@@ -85,14 +97,15 @@ export function parseDocument(text: string): ParsedDocument {
     const dated = line.match(DATE_LINE);
     if (dated?.[1]) {
       const parsedDate = isoDate(dated[1]);
-      if (!parsedDate) {
+      if (!parsedDate || laterThanToday(parsedDate)) {
         issues.push({
-          description: "Дата в строке не складывается в календарную. Она не подставлена.",
+          description: "Дата в строке не складывается в календарную или стоит позже сегодняшнего дня. Она не подставлена.",
           line: lineNo,
           excerpt: line.slice(0, 180),
         });
       } else {
         studyDate = parsedDate;
+        dates.push({ date: parsedDate, line: lineNo, excerpt: line.slice(0, 180) });
       }
       return;
     }
@@ -100,6 +113,7 @@ export function parseDocument(text: string): ParsedDocument {
     if (CONCLUSION.test(line) && NORMAL_CLAIM.test(line)) {
       conclusionSaysNormal = true;
       conclusionLine = lineNo;
+      conclusionExcerpt = line.slice(0, 180);
     }
 
     const concept = CONCEPTS.find((item) => item.pattern.test(line));
@@ -107,10 +121,19 @@ export function parseDocument(text: string): ParsedDocument {
       if (concept.id === "BP_SYS") {
         const bp = line.match(/(\d{2,3})\s*[/\\]\s*(\d{2,3})/);
         if (bp?.[1] && bp[2]) {
+          const systolic = numberFrom(bp[1]);
+          const diastolic = numberFrom(bp[2]);
+          if (systolic <= diastolic) {
+            issues.push({
+              description: `В одной строке верхнее давление ${bp[1]} не больше нижнего ${bp[2]}. Обе цифры оставлены, ни одна не выбрана.`,
+              line: lineNo,
+              excerpt: line,
+            });
+          }
           facts.push({
             concept: "BP_SYS",
             label: "верхнее давление",
-            value: numberFrom(bp[1]),
+            value: systolic,
             valueText: bp[1],
             unit: "мм рт. ст.",
             date: studyDate,
@@ -122,7 +145,7 @@ export function parseDocument(text: string): ParsedDocument {
           facts.push({
             concept: "BP_DIA",
             label: "нижнее давление",
-            value: numberFrom(bp[2]),
+            value: diastolic,
             valueText: bp[2],
             unit: "мм рт. ст.",
             date: studyDate,
@@ -131,16 +154,31 @@ export function parseDocument(text: string): ParsedDocument {
             line: lineNo,
             excerpt: line,
           });
+        } else if (line.replace(concept.pattern, "").trim()) {
+          issues.push({
+            description: "В строке названо давление, но пары чисел нет. Значение не подставлено.",
+            line: lineNo,
+            excerpt: line.slice(0, 180),
+          });
         }
         return;
       }
 
-      const valueMatch = line.match(/(\d+(?:[.,]\d+)?)\s*([A-Za-zА-Яа-яЁё/%µμ. ]+?)?(?:\s+(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?))?$/);
-      if (!valueMatch?.[1]) return;
+      const valueMatch = line.match(/(-?\d+(?:[.,]\d+)?)\s*([A-Za-zА-Яа-яЁё/%µμ. ]+?)?(?:\s+(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?))?$/);
+      if (!valueMatch?.[1]) {
+        if (line.replace(concept.pattern, "").trim()) {
+          issues.push({
+            description: `В строке назван ${concept.label}, но числа рядом нет. Значение не подставлено.`,
+            line: lineNo,
+            excerpt: line.slice(0, 180),
+          });
+        }
+        return;
+      }
       const low = valueMatch[3] ? numberFrom(valueMatch[3]) : null;
       const high = valueMatch[4] ? numberFrom(valueMatch[4]) : null;
       const value = numberFrom(valueMatch[1]);
-      facts.push({
+      const fact = {
         concept: concept.id,
         label: concept.label,
         value,
@@ -151,7 +189,22 @@ export function parseDocument(text: string): ParsedDocument {
         referenceHigh: high,
         line: lineNo,
         excerpt: line,
-      });
+      };
+      facts.push(fact);
+      if (value < 0) {
+        issues.push({
+          description: `${fact.label} записан как ${fact.valueText}. Число меньше нуля оставлено как в строке и не заменено.`,
+          line: lineNo,
+          excerpt: line,
+        });
+      }
+      if (low != null && high != null && low > high) {
+        issues.push({
+          description: `У ${fact.label} референс бланка записан как ${low}–${high}. Границы не поменяны местами.`,
+          line: lineNo,
+          excerpt: line,
+        });
+      }
       return;
     }
 
@@ -170,16 +223,68 @@ export function parseDocument(text: string): ParsedDocument {
     }
   });
 
+  const uniqueDates = [...new Set(dates.map((item) => item.date))];
+  if (uniqueDates.length > 1) {
+    const first = dates[0];
+    const second = dates.find((item) => item.date !== first?.date);
+    if (first && second) {
+      issues.push(pair(
+        {
+          description: `В документе разные даты: ${uniqueDates.join(" и ")}. Для каждой строки остаётся дата, которая стоит выше неё. Одна дата на весь документ не выбирается.`,
+          line: first.line,
+          excerpt: first.excerpt,
+        },
+        second,
+      ));
+    }
+  }
+
+  const byConcept = new Map<string, typeof facts>();
+  for (const fact of facts) {
+    const list = byConcept.get(fact.concept) ?? [];
+    list.push(fact);
+    byConcept.set(fact.concept, list);
+  }
+  for (const list of byConcept.values()) {
+    const first = list[0];
+    const second = list[1];
+    if (!first || !second) continue;
+    const values = new Set(list.map((item) => item.valueText));
+    const units = new Set(list.map((item) => item.unit).filter(Boolean));
+    if (values.size > 1) {
+      issues.push(pair(
+        {
+          description: `В одном документе ${first.label} записан по-разному: ${list.map((item) => `${item.valueText} ${item.unit}`.trim()).join(" и ")}. Разбор не выбирает одно число.`,
+          line: first.line,
+          excerpt: first.excerpt,
+        },
+        second,
+      ));
+    } else if (units.size > 1) {
+      issues.push(pair(
+        {
+          description: `В одном документе у ${first.label} разные единицы: ${[...units].join(" и ")}. Единицы не пересчитаны.`,
+          line: first.line,
+          excerpt: first.excerpt,
+        },
+        second,
+      ));
+    }
+  }
+
   if (conclusionSaysNormal) {
     for (const fact of facts) {
       const below = fact.referenceLow != null && fact.value < fact.referenceLow;
       const above = fact.referenceHigh != null && fact.value > fact.referenceHigh;
       if (below || above) {
-        issues.push({
-          description: `В заключении сказано, что показатели в норме, а ${fact.label} ${fact.valueText} ${fact.unit} выходит за референс этого же бланка ${fact.referenceLow}–${fact.referenceHigh}.`,
-          line: conclusionLine || fact.line,
-          excerpt: fact.excerpt,
-        });
+        issues.push(pair(
+          {
+            description: `В заключении сказано, что показатели в норме, а ${fact.label} ${fact.valueText} ${fact.unit} выходит за референс этого же бланка ${fact.referenceLow}–${fact.referenceHigh}.`,
+            line: fact.line,
+            excerpt: fact.excerpt,
+          },
+          conclusionLine ? { line: conclusionLine, excerpt: conclusionExcerpt } : undefined,
+        ));
       }
     }
   }
