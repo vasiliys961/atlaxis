@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { anonymizeText } from "./anonymize";
+import { AXES, CLUSTERS } from "./catalog";
+import { askDoctorOpus } from "./doctor-opus";
 import { sanitizeImageReading } from "./image-json";
+import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
 import { parseDocument } from "./parse";
 import { extractPdfText } from "./pdf";
@@ -47,7 +51,7 @@ test("blank contradiction, dose split and trend", () => {
 
   const report = buildReport(state);
   assert.equal(report.status, "ready");
-  assert.match(report.conflicts.map((item) => item.body).join("\n"), /разные дозы/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /референс этого же бланка/);
   assert.equal(report.changes.find((item) => item.title === "ЛПНП")?.body.startsWith("4.8 ммоль/л (2024-03-12), затем 3.1"), true);
   assert.match(report.headline, /измерен/);
@@ -117,4 +121,54 @@ test("invented dose blocks the report", () => {
     state,
   );
   assert.equal(report.status, "blocked");
+});
+
+test("working catalog has 15 clusters and 20 axes", () => {
+  assert.equal(CLUSTERS.length, 15);
+  assert.equal(AXES.length, 20);
+  assert.equal(new Set(AXES.map((axis) => axis.id)).size, 20);
+});
+
+test("a picture may reach the eyes and not the brain", () => {
+  const eyes = decideProcessing({ operation: "read_image", kind: "image", bytes: 100, hasKey: true });
+  const brain = decideProcessing({ operation: "narrate", kind: "image", bytes: 100, hasKey: true });
+  const dicom = decideProcessing({ operation: "read_image", kind: "dicom", bytes: 100, hasKey: true });
+  const huge = decideProcessing({ operation: "read_image", kind: "image", bytes: 9 * 1024 * 1024, hasKey: true });
+  assert.equal(eyes.audience, "eyes");
+  assert.equal(eyes.allow, true);
+  assert.equal(brain.allow, false);
+  assert.equal(dicom.allow, false);
+  assert.equal(huge.allow, false);
+});
+
+test("doctor opus question stays on this machine", async () => {
+  const reply = askDoctorOpus("что видно на снимке");
+  assert.equal(reply.connected, false);
+  assert.equal(reply.sent, false);
+  assert.match(reply.answer, /никуда не ушёл/);
+
+  const child = spawn(process.execPath, ["--import", "tsx", "mcp/doctor-opus/server.ts"], { stdio: ["pipe", "pipe", "pipe"] });
+  const body = Buffer.from(JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "ask_doctor_opus", arguments: { question: "что видно" } },
+  }));
+  child.stdin.write(`Content-Length: ${body.length}\r\n\r\n`);
+  child.stdin.write(body);
+  const raw = await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const timer = setTimeout(() => reject(new Error("mcp timeout")), 8000);
+    child.stdout.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+      const data = Buffer.concat(chunks);
+      const headerEnd = data.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+      const length = Number(data.subarray(0, headerEnd).toString("utf8").match(/Content-Length:\s*(\d+)/i)?.[1] ?? 0);
+      if (data.length < headerEnd + 4 + length) return;
+      clearTimeout(timer);
+      resolve(data.subarray(headerEnd + 4, headerEnd + 4 + length));
+    });
+  }).finally(() => child.kill());
+  assert.match(raw.toString("utf8"), /никуда не ушёл/);
 });

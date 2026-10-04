@@ -42,11 +42,27 @@ test("one marker across years is a change, not a diagnosis", async () => {
   assert.doesNotMatch(report.changes.map((item) => item.body).join("\n"), /диагноз/);
 });
 
-test("different doses stay side by side", async () => {
+test("different doses on different dates are a change", async () => {
   const state = await load(["dose-a.txt", "dose-b.txt"]);
   const report = buildReport(state);
-  assert.match(report.conflicts.map((item) => item.body).join("\n"), /разные дозы/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
+  assert.doesNotMatch(report.conflicts.map((item) => item.title).join("\n"), /Разные дозы/);
   assert.doesNotMatch(JSON.stringify(report), /принимайте|назначьте/i);
+});
+
+test("two doses in one document stay a conflict", async () => {
+  const state = await load(["dose-same.txt"]);
+  const report = buildReport(state);
+  assert.match(report.conflicts.map((item) => item.body).join("\n"), /одной дате или к одному документу/);
+});
+
+test("same month links a drug and a lab value without a cause", async () => {
+  const state = await load(["simple.txt", "dose-b.txt"]);
+  const report = buildReport(state);
+  assert.match(report.relationships.map((item) => item.body).join("\n"), /тот же период/);
+  assert.match(report.themes.map((item) => item.body).join("\n"), /В документе:/);
+  assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал/);
+  assert.match(report.gaps.join("\n"), /Ось «Давление»/);
 });
 
 test("table and conclusion disagreement is shown", async () => {
@@ -93,6 +109,22 @@ test("image is kept out and the imaging axis stays incomplete", async () => {
   assert.match(report.headline, /2 снимка/);
   assert.match(report.cannotSay.join(" "), /снимку нельзя назвать измерения/);
   assert.match(report.gaps.join(" "), /нет давления/);
+});
+
+test("a long jpeg name keeps its type", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "atlaxis-long-"));
+  const state = emptyState();
+  const longName = `0-02-05-${"a".repeat(64)}_21f3791.jpg`;
+  try {
+    await ingestFile(state, dir, longName, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    await ingestFile(state, dir, "photo-without-extension", Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.match(state.documents[0]?.fileName ?? "", /\.jpg$/);
+  assert.equal(state.documents[0]?.status, "anonymization_unconfirmed");
+  assert.match(state.documents[1]?.fileName ?? "", /\.jpg$/);
+  assert.doesNotMatch(state.documents.map((item) => item.note).join(" "), /проверку типа/);
 });
 
 test("prompt injection does not become a diagnosis", async () => {

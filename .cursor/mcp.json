@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "doctor-opus": {
+      "command": "node",
+      "args": ["--import", "tsx", "mcp/doctor-opus/server.ts"]
+    }
+  }
+}

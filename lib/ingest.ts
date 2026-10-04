@@ -3,7 +3,8 @@ import path from "path";
 import { anonymizeText } from "./anonymize";
 import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
-import { readImageJson } from "./polza";
+import { decideProcessing } from "./policy";
+import { polzaKey, readImageJson } from "./polza";
 import { contentHash, newId, parseDocument } from "./parse";
 import { PIPELINE_VERSION, type MedicalDocument, type OwnerState } from "./types";
 
@@ -18,6 +19,15 @@ function extension(fileName: string): string {
   return match?.[1] ?? "";
 }
 
+function sniffExt(bytes: Buffer): string {
+  if (bytes.length >= 8 && bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a") return "png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
+  if (bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP") return "webp";
+  if (bytes.length >= 5 && bytes.subarray(0, 5).toString("ascii") === "%PDF-") return "pdf";
+  if ((bytes.length >= 132 && bytes.subarray(128, 132).toString("ascii") === "DICM") || bytes.subarray(0, 4).toString("ascii") === "DICM") return "dcm";
+  return "";
+}
+
 function looksLike(bytes: Buffer, ext: string): boolean {
   if (TEXT_EXT.has(ext)) return !bytes.subarray(0, 800).includes(0);
   if (ext === "png") return bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a";
@@ -29,8 +39,14 @@ function looksLike(bytes: Buffer, ext: string): boolean {
 }
 
 function safeName(fileName: string): string {
-  const base = path.basename(fileName).replace(/[^\w.\-а-яё ]+/gi, "_").slice(0, 80);
-  return base || "document";
+  const raw = path.basename(fileName);
+  const dot = raw.lastIndexOf(".");
+  const hasExt = dot > 0 && dot < raw.length - 1;
+  const ext = hasExt ? raw.slice(dot + 1).replace(/[^a-z0-9]+/gi, "").toLowerCase().slice(0, 8) : "";
+  const stem = (hasExt ? raw.slice(0, dot) : raw).replace(/[^\w.\-а-яё ]+/gi, "_").replace(/^\.+/, "");
+  const suffix = ext ? `.${ext}` : "";
+  const name = `${stem.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
+  return name.replace(/^\.+/, "") || "document";
 }
 
 export async function ingestFile(
@@ -40,12 +56,21 @@ export async function ingestFile(
   bytes: Buffer,
   origin: "phone" | "computer" = "computer",
 ): Promise<MedicalDocument> {
-  const name = safeName(fileName);
+  let name = safeName(fileName);
   const hash = contentHash(bytes);
   const existing = state.documents.find((item) => item.contentHash === hash && item.pipelineVersion === PIPELINE_VERSION);
   if (existing) return existing;
 
-  const ext = extension(name);
+  let ext = extension(name);
+  if (!TEXT_EXT.has(ext) && !IMAGE_EXT.has(ext) && !KEEP_EXT.has(ext)) {
+    const sniffed = sniffExt(bytes);
+    if (sniffed) {
+      ext = sniffed;
+      if (!name.toLowerCase().endsWith(`.${sniffed}`)) {
+        name = `${name.slice(0, Math.max(1, 80 - sniffed.length - 1))}.${sniffed}`;
+      }
+    }
+  }
   const id = newId();
   const allowed = TEXT_EXT.has(ext) || IMAGE_EXT.has(ext) || KEEP_EXT.has(ext);
   const base = {
@@ -104,15 +129,25 @@ export async function ingestFile(
       }
     }
     const picture = IMAGE_EXT.has(ext);
+    const eyes = decideProcessing({
+      operation: "read_image",
+      kind: picture ? "image" : "dicom",
+      bytes: bytes.length,
+      hasKey: Boolean(polzaKey()),
+    });
     const held: MedicalDocument = {
       ...base,
       status: "anonymization_unconfirmed",
       statusLabel: "Снимок сохранён отдельно",
       note: picture
-        ? origin === "phone"
-          ? "Снимок со смартфона сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
-          : "Готовый снимок сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
-        : "Текст на изображении здесь не проверяется, поэтому измерения с него не читаются.",
+        ? eyes.allow
+          ? "Снимок отправлен на чтение, но показатели из ответа не приняты. В разбор они не вошли."
+          : polzaKey()
+            ? eyes.reason
+            : origin === "phone"
+              ? "Снимок со смартфона сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
+              : "Готовый снимок сохранён. Текст на изображении не проверяется, поэтому измерения с него не читаются."
+        : eyes.reason,
     };
     state.documents.push(held);
     state.report = null;

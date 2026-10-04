@@ -19,6 +19,15 @@ const CONCEPTS: { id: string; label: string; pattern: RegExp }[] = [
   { id: "AST", label: "АСТ", pattern: /(?<![\p{L}])(?:аст|ast)(?![\p{L}])/iu },
   { id: "GGT", label: "ГГТ", pattern: /(?<![\p{L}])(?:ггт|ggt)(?![\p{L}])/iu },
   { id: "BILI", label: "билирубин", pattern: /(?<![\p{L}])(?:билирубин|bilirubin)(?![\p{L}])/iu },
+  { id: "TSH", label: "ТТГ", pattern: /(?<![\p{L}])(?:ттг|tsh)(?![\p{L}])/iu },
+  { id: "CRP", label: "СРБ", pattern: /(?<![\p{L}])(?:срб|crp|с-реактивн[\p{L}]*)(?![\p{L}])/iu },
+  { id: "FERRITIN", label: "ферритин", pattern: /(?<![\p{L}])(?:ферритин|ferritin)(?![\p{L}])/iu },
+  { id: "URIC", label: "мочевая кислота", pattern: /(?<![\p{L}])(?:мочевая кислота|uric acid|urate)(?![\p{L}])/iu },
+  { id: "AMYLASE", label: "амилаза", pattern: /(?<![\p{L}])(?:амилаз[\p{L}]*|amylase)(?![\p{L}])/iu },
+  { id: "VITD", label: "витамин D", pattern: /(?<![\p{L}])(?:витамин\s*[dд]|25-oh)(?![\p{L}])/iu },
+  { id: "INR", label: "МНО", pattern: /(?<![\p{L}])(?:мно|inr)(?![\p{L}])/iu },
+  { id: "NA", label: "натрий", pattern: /(?<![\p{L}])(?:натрий|sodium)(?![\p{L}])/iu },
+  { id: "K", label: "калий", pattern: /(?<![\p{L}])(?:калий|potassium)(?![\p{L}])/iu },
   { id: "BP_SYS", label: "верхнее давление", pattern: /(?<![\p{L}])(?:артериальн[\p{L}]*\s+давлени[\p{L}]*|ад|blood pressure)(?![\p{L}])/iu },
 ];
 

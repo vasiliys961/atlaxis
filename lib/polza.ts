@@ -1,5 +1,6 @@
 import { EYES_MODEL } from "./models";
 import { sanitizeImageReading, type ImageReading } from "./image-json";
+import { decideProcessing } from "./policy";
 
 const URL = "https://polza.ai/api/v1/chat/completions";
 
@@ -20,7 +21,23 @@ function messageText(content: unknown): string {
     .trim();
 }
 
-export async function polzaText(model: string, content: string | Part[], maxTokens: number): Promise<string> {
+export async function polzaText(
+  model: string,
+  content: string | Part[],
+  maxTokens: number,
+  audience: "eyes" | "brain" = "brain",
+): Promise<string> {
+  const hasImage = Array.isArray(content) && content.some((part) => part.type === "image_url");
+  const decision = decideProcessing({
+    operation: audience === "eyes" ? "read_image" : "narrate",
+    kind: hasImage ? "image" : "structured_text",
+    bytes: audience === "eyes" ? 1 : typeof content === "string" ? content.length : 0,
+    hasKey: Boolean(polzaKey()),
+  });
+  if (hasImage && audience !== "eyes") {
+    throw new Error("image_blocked_from_brain");
+  }
+  if (!decision.allow) throw new Error(decision.reason);
   const key = polzaKey();
   if (!key) throw new Error("polza_key_missing");
   const response = await fetch(URL, {
@@ -51,14 +68,21 @@ const EYES_PROMPT = [
 ].join(" ");
 
 export async function readImageJson(bytes: Buffer, mime: string): Promise<ImageReading | null> {
-  if (!polzaKey() || bytes.length > 8 * 1024 * 1024) return null;
+  const decision = decideProcessing({
+    operation: "read_image",
+    kind: "image",
+    bytes: bytes.length,
+    hasKey: Boolean(polzaKey()),
+  });
+  if (!decision.allow) return null;
   const content = await polzaText(
     EYES_MODEL,
     [
       { type: "text", text: EYES_PROMPT },
       { type: "image_url", image_url: { url: `data:${mime};base64,${bytes.toString("base64")}` } },
     ],
-    1500,
+    2500,
+    "eyes",
   );
   const json = content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
