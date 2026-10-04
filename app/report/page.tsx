@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { targetMark } from "@/lib/guidelines";
-import { EYES_MODEL, SONAR_MODEL, THEME_WRITER } from "@/lib/models";
+import { EYES_MODEL, SONAR_MODEL } from "@/lib/models";
+import { writerFor } from "@/lib/router";
 import type { ReportBlock, ReportView } from "@/lib/types";
 
 function plain(text: string): string {
@@ -119,7 +120,7 @@ export default function ReportPage() {
 
       <section className="section">
         <h2>Модели</h2>
-        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Каждую тему пересказывает {THEME_WRITER.label}. Актуальные рекомендации по уже загруженным анализам ищет Sonar ({SONAR_MODEL}).</p>
+        <p className="quiet">Снимки в JSON читает Gemini 3.8 Flash ({EYES_MODEL}). Спокойную тему пересказывает Sonnet 5.5, тему со спорной записью — Opus 5.5. Актуальные рекомендации по уже загруженным анализам ищет Sonar ({SONAR_MODEL}).</p>
         {report.modelsReady === false ? <p className="quiet">Ключ Пользы AI не задан. Модели не вызываются, разбор собран правилами.</p> : null}
       </section>
 
@@ -194,14 +195,14 @@ export default function ReportPage() {
       {report.themes.length > 0 ? (
         <section className="section">
           <h2>Что написано в документах</h2>
-          {report.themes.some((block) => block.body.trim() && !block.notes?.some((note) => note.model === THEME_WRITER.id)) ? (
+          {report.themes.some((block) => block.body.trim() && !block.notes?.some((note) => note.model === writerFor(block).id)) ? (
             <p className="quiet">Пояснения по темам ещё пишутся.</p>
           ) : null}
           {report.themes.map((block) => (
             <article key={block.title} className="note">
               <h3>{block.title}</h3>
               <Statements block={block} />
-              {block.notes?.filter((note) => note.model === THEME_WRITER.id).map((note) => (
+              {block.notes?.filter((note) => note.model === writerFor(block).id).map((note) => (
                 <p key={note.model} className="quiet">{note.label}. {plain(note.text)}</p>
               ))}
             </article>

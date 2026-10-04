@@ -1,12 +1,11 @@
 import { catalogEntries, targetMark } from "./guidelines";
-import { BRAIN_MODELS } from "./models";
+import { LUNA, OPUS, SONNET } from "./models";
 import { polzaKey, polzaText } from "./polza";
 import { decideProcessing } from "./policy";
 import { buildReport } from "./report";
+import { lunaPrompt, readLuna, routeQuestion, SAFETY_MEDS, SAFETY_URGENT } from "./router";
 import type { ChatTurn, OwnerState, ReportView } from "./types";
 import { acceptWording } from "./wording";
-
-const PROFESSOR = BRAIN_MODELS[0];
 
 export const EXPLAIN_SYSTEM = `Ты отвечаешь с компетенцией профессора медицины из Doctor Opus: доказательная медицина, точная структура, сначала прямой ответ, затем плотное разъяснение терминов простым языком.
 
@@ -52,7 +51,18 @@ function priorTurns(chat: ChatTurn[]): string {
     .join("\n");
 }
 
+async function classify(question: string): Promise<"ordinary" | "medication" | "urgent"> {
+  try {
+    return readLuna(await polzaText(LUNA.id, lunaPrompt(question), 40));
+  } catch {
+    return "ordinary";
+  }
+}
+
 async function explain(state: OwnerState, question: string): Promise<string> {
+  const route = routeQuestion(question);
+  if (route === "safety_meds") return SAFETY_MEDS;
+  if (route === "safety_urgent") return SAFETY_URGENT;
   const decision = decideProcessing({
     operation: "narrate",
     kind: "structured_text",
@@ -60,6 +70,9 @@ async function explain(state: OwnerState, question: string): Promise<string> {
     hasKey: Boolean(polzaKey()),
   });
   if (!decision.allow) return "Сейчас ответ по анализам недоступен: ключ модели не задан. Разбор на экране собран правилами.";
+  const kind = route === "luna" ? await classify(question) : "ordinary";
+  if (kind === "medication") return SAFETY_MEDS;
+  if (kind === "urgent") return SAFETY_URGENT;
   const report = buildReport(state);
   if (state.report?.inputHash === report.inputHash) {
     if (state.report.guidelineSearch) report.guidelineSearch = state.report.guidelineSearch;
@@ -78,10 +91,18 @@ ${priorTurns(state.chat)}
 
 Вопрос пациента:
 ${question}`;
+  const first = route === "opus" ? OPUS : SONNET;
   try {
-    const text = await polzaText(PROFESSOR.id, prompt, 2200);
-    return acceptExplanation(text, state)
-      ? text
+    const text = await polzaText(first.id, prompt, first.id === OPUS.id ? 2200 : 900);
+    if (acceptExplanation(text, state)) return text;
+    if (first.id === OPUS.id) return "Ответ не показан: в нём появились диагноз, лечение или числа, которых нет в документах.";
+  } catch {
+    if (first.id === OPUS.id) return "Не удалось получить разъяснение. Вопрос остался здесь, наружу ушли только уже собранные сведения.";
+  }
+  try {
+    const review = await polzaText(OPUS.id, prompt, 2200);
+    return acceptExplanation(review, state)
+      ? review
       : "Ответ не показан: в нём появились диагноз, лечение или числа, которых нет в документах.";
   } catch {
     return "Не удалось получить разъяснение. Вопрос остался здесь, наружу ушли только уже собранные сведения.";

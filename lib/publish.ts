@@ -1,5 +1,6 @@
 import { searchGuidelines } from "./guidelines-search";
-import { THEME_WRITER } from "./models";
+import { OPUS } from "./models";
+import { writerFor } from "./router";
 import { newId } from "./parse";
 import { polzaKey, polzaText } from "./polza";
 import { buildReport } from "./report";
@@ -21,20 +22,26 @@ export function reportNeedsRefresh(state: OwnerState): boolean {
   return next.themes.some((theme) => {
     if (!theme.body.trim()) return false;
     const saved = state.report?.themes.find((item) => item.title === theme.title && item.body === theme.body);
-    return !saved?.notes?.some((note) => note.model === THEME_WRITER.id);
+    return !saved?.notes?.some((note) => note.model === writerFor(theme).id);
   });
 }
 
 async function narrateThemes(report: ReportView, state: OwnerState): Promise<void> {
-  const open = report.themes.filter((theme) => theme.body.trim() && !theme.notes?.length).slice(0, THEMES_PER_PASS);
+  const open = report.themes.filter((theme) => {
+    if (!theme.body.trim()) return false;
+    return !theme.notes?.some((note) => note.model === writerFor(theme).id);
+  }).slice(0, THEMES_PER_PASS);
   await Promise.all(open.map(async (theme) => {
     const packet = [theme.lead, theme.body].filter(Boolean).join("\n");
     const prompt = themePrompt(theme.title, packet);
+    const writer = writerFor(theme);
+    const ask = async (model: { id: string; label: string }) => {
+      const text = await polzaText(model.id, prompt, 280);
+      return acceptWording(text, state, packet) ? { model: model.id, label: model.label, text } : null;
+    };
     try {
-      const text = await polzaText(THEME_WRITER.id, prompt, 280);
-      if (acceptWording(text, state, packet)) {
-        theme.notes = [{ model: THEME_WRITER.id, label: THEME_WRITER.label, text }];
-      }
+      const note = await ask(writer) ?? (writer.id === OPUS.id ? null : await ask(OPUS));
+      if (note) theme.notes = [note];
     } catch {
       // Тема остаётся без абзаца, следующий заход попробует снова.
     }
@@ -50,7 +57,7 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
   if (same && previous) {
     for (const theme of report.themes) {
       const saved = previous.themes.find((item) => item.title === theme.title && item.body === theme.body);
-      const written = saved?.notes?.filter((note) => note.model === THEME_WRITER.id);
+      const written = saved?.notes?.filter((note) => note.model === writerFor(theme).id);
       if (written?.length) theme.notes = written;
     }
   }

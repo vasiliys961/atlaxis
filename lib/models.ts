@@ -5,4 +5,6 @@ export const BRAIN_MODELS = [
   { id: "openai/gpt-6.1-sol", label: "GPT-6.1" },
 ] as const;
 
-export const THEME_WRITER = BRAIN_MODELS[0];
+export const OPUS = BRAIN_MODELS[0];
+export const SONNET = { id: "anthropic/claude-sonnet-5.5", label: "Sonnet 5.5" } as const;
+export const LUNA = { id: "openai/gpt-6-luna", label: "Luna" } as const;

@@ -10,7 +10,8 @@ import { acceptGuidelineSearch, guidelineSearchPrompt } from "./guidelines-searc
 import { sanitizeImageReading } from "./image-json";
 import { decideProcessing } from "./policy";
 import { acceptWording } from "./wording";
-import { BRAIN_MODELS, THEME_WRITER } from "./models";
+import { BRAIN_MODELS, LUNA, SONNET } from "./models";
+import { readLuna, routeQuestion, writerFor } from "./router";
 import { parseDocument } from "./parse";
 import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
@@ -26,10 +27,19 @@ test("a theme is retold on its own and not as the whole chart", () => {
   assert.doesNotMatch(prompt, /ЛПНП/);
 });
 
-test("a theme is retold by opus alone", () => {
-  assert.equal(THEME_WRITER.id, "anthropic/claude-opus-5.5");
-  assert.equal(THEME_WRITER.label, "Opus 5.5");
-  assert.notEqual(THEME_WRITER.id, BRAIN_MODELS[1]?.id);
+test("a calm theme goes to sonnet and a disputed one to opus", () => {
+  assert.equal(writerFor({ body: "глюкоза 6.4 ммоль/л", lead: "Данных по теме достаточно, чтобы прочитать записанные числа." }).id, SONNET.id);
+  assert.equal(writerFor({ body: "гемоглобин 108 г/л. Запись спорная: число оставлено как в строке." }).id, BRAIN_MODELS[0].id);
+  assert.equal(SONNET.id, "anthropic/claude-sonnet-5.5");
+  assert.equal(LUNA.id, "openai/gpt-6-luna");
+  assert.doesNotMatch(LUNA.id, /pro|5\.6/i);
+  assert.equal(routeQuestion("можно ли отменить варфарин"), "safety_meds");
+  assert.equal(routeQuestion("боль в груди уже час"), "safety_urgent");
+  assert.equal(routeQuestion("что значит глюкоза"), "sonnet");
+  assert.equal(routeQuestion("почему доза другая"), "opus");
+  assert.equal(routeQuestion("а это вообще серьёзно"), "luna");
+  assert.equal(readLuna("urgent"), "urgent");
+  assert.equal(readLuna("ordinary question"), "ordinary");
 });
 
 test("the second brain is gpt 6.1 and not astra", () => {
