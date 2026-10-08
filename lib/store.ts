@@ -8,10 +8,15 @@ import { emptyState, type OwnerState } from "./types";
 const locks = new Map<string, Promise<unknown>>();
 
 function root(ownerId: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerId)) {
+    throw new Error("invalid_owner_id");
+  }
   return path.join(dataRoot(), ownerId);
 }
 
 export async function withOwner<T>(ownerId: string, task: (state: OwnerState, dir: string) => Promise<T>): Promise<T> {
+  // Validate identifiers before any filesystem or blob access.
+  root(ownerId);
   const previous = locks.get(ownerId) ?? Promise.resolve();
   const run = previous.then(async () => {
     const dir = root(ownerId);
@@ -25,7 +30,10 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
       } else {
         if (!raw.trim()) throw new Error("owner_state_corrupt");
         const saved = JSON.parse(raw) as Partial<OwnerState>;
-        if (!saved || typeof saved !== "object" || Array.isArray(saved)) throw new Error("owner_state_corrupt");
+        if (!saved || typeof saved !== "object" || Array.isArray(saved) ||
+          !["documents", "facts", "medications", "issues", "reports", "reviews", "jobs", "audit", "chat"].every(
+            key => (saved as Record<string, unknown>)[key] === undefined || Array.isArray((saved as Record<string, unknown>)[key])
+          )) throw new Error("owner_state_corrupt");
         state = { ...emptyState(), ...saved };
       }
       state.documents ??= [];
