@@ -15,6 +15,7 @@ export type ImageMedication = {
 };
 
 export type ImageReading = {
+  visualFindings?: { description: string; region: string; confidence: "low" | "moderate"; frame: number | null }[];
   studyDate: string;
   lines: string[];
   measurements: ImageMeasurement[];
@@ -37,6 +38,13 @@ export function sanitizeImageReading(raw: unknown): ImageReading | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const source = raw as Record<string, unknown>;
   const reading: ImageReading = {
+    visualFindings: rows(source.visualFindings, (item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const description = text(row.description, 600);
+      if (!description) return null;
+      return { description, region: text(row.region), confidence: row.confidence === "moderate" ? "moderate" as const : "low" as const, frame: Number.isInteger(row.frame) && Number(row.frame) >= 0 ? Number(row.frame) : null };
+    }),
     studyDate: /^\d{4}-\d{2}-\d{2}$/.test(text(source.studyDate, 10)) ? text(source.studyDate, 10) : "",
     lines: rows(source.lines, (item) => {
       const line = text(item, 240);
@@ -61,7 +69,7 @@ export function sanitizeImageReading(raw: unknown): ImageReading | null {
       return medication.name && medication.dose ? medication : null;
     }),
   };
-  const filled = reading.lines.length + reading.measurements.length + reading.medications.length;
+  const filled = reading.lines.length + reading.measurements.length + reading.medications.length + (reading.visualFindings?.length ?? 0);
   return filled > 0 || reading.studyDate ? reading : { ...EMPTY };
 }
 
@@ -93,10 +101,12 @@ export function scrubReading(reading: ImageReading): { json: string; lines: stri
     dose: scrub(item.dose),
     unit: scrub(item.unit),
   }));
-  const leaked = [date, ...lines, ...measurements.flatMap((item) => Object.values(item)), ...medications.flatMap((item) => Object.values(item))].some(
+  const findings = (reading.visualFindings ?? []).map(item => ({ ...item, description: scrub(item.description), region: scrub(item.region) }));
+  const leaked = [date, ...lines, ...measurements.flatMap((item) => Object.values(item)), ...medications.flatMap((item) => Object.values(item)), ...findings.flatMap(item => [item.description, item.region])].some(
     (item) => item.leaked,
   );
   const clean: ImageReading = {
+    visualFindings: findings.map(item => ({ ...item, description: item.description.text, region: item.region.text })),
     studyDate: date.text,
     lines: lines.map((item) => item.text).filter(Boolean),
     measurements: measurements.map((item) => ({

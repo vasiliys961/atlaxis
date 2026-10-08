@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-08.3";
+export const PIPELINE_VERSION = "2026-10-08.4";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
@@ -10,6 +10,14 @@ export type DocumentStatus =
   | "failed";
 
 export type MedicalDocument = {
+  visualAnalysis?: {
+    status: "ready" | "unavailable";
+    totalFrames: number;
+    analyzedFrames: number[];
+    coverage: "complete" | "sampled";
+    limitations: string[];
+    findings: NonNullable<import("./image-json").ImageReading["visualFindings"]>;
+  };
   id: string;
   fileName: string;
   byteSize: number;
@@ -91,6 +99,7 @@ export type ReportBlock = {
 };
 
 export type ReportView = {
+  imagingStudies?: { documentId: string; documentName: string; status: "ready" | "unavailable"; totalFrames: number; analyzedFrames: number[]; coverage: "complete" | "sampled"; limitations: string[] }[];
   clinicalSynthesis?: import("./clinical-synthesis").ClinicalSynthesis;
   generatedAt: string;
   inputHash: string;
@@ -151,7 +160,11 @@ export type JobRecord = {
   origin?: "phone" | "computer";
 };
 
+export type ChatMode = "analysis" | "general";
+
 export type ChatTurn = {
+  mode?: ChatMode;
+  sources?: { title: string; url: string; pmid: string; year: string }[];
   role: "user" | "assistant";
   text: string;
   at: string;

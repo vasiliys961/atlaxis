@@ -9,11 +9,13 @@ const INSTRUCTION = /игнорируй предыдущ|ignore previous|пос�
 export type ClinicalContext = {
   packet: string;
   sources: Map<string, SourceRef>;
+  visualSources: Set<string>;
   complete: boolean;
   reasons: string[];
 };
 
-export function buildClinicalContext(state: OwnerState): ClinicalContext {
+export function buildClinicalContext(state: OwnerState, guidelineSearch?: string): ClinicalContext {
+  const visualSources = new Set<string>();
   const sources = new Map<string, SourceRef>();
   const reasons: string[] = [];
   const documents = state.documents.filter(d => d.status === "ready").map((document, index) => {
@@ -40,9 +42,18 @@ export function buildClinicalContext(state: OwnerState): ClinicalContext {
       sources.set(id, { documentId: document.id, documentName: document.fileName, line: i + 1, excerpt });
       return [{ id, text: excerpt }];
     });
+    const observations = (document.visualAnalysis?.findings ?? []).map((finding, i) => {
+      const id = `${document.id}:visual:${i + 1}`;
+      const excerpt = `Предварительное визуальное наблюдение ИИ: ${finding.description}; область: ${finding.region || "не установлена"}; кадр: ${finding.frame ?? "не указан"}; уверенность: ${finding.confidence}.`;
+      sources.set(id, { documentId: document.id, documentName: document.fileName, line: i + 1, excerpt });
+      visualSources.add(id);
+      return { id, text: excerpt, origin: "model_pixel_observation" };
+    });
     return {
       document: index + 1,
-      modality: image ? "image_text_only" : dicom ? "dicom_metadata_only" : "clinical_text",
+      modality: image ? "image_text_and_pixel_observations" : dicom ? "dicom_metadata_and_pixel_observations" : "clinical_text",
+      pixelAnalysis: document.visualAnalysis ? { status: document.visualAnalysis.status, totalFrames: document.visualAnalysis.totalFrames, analyzedFrames: document.visualAnalysis.analyzedFrames, coverage: document.visualAnalysis.coverage, limitations: document.visualAnalysis.limitations } : null,
+      observations,
       studyDate: document.studyDate,
       lines,
     };
@@ -52,6 +63,7 @@ export function buildClinicalContext(state: OwnerState): ClinicalContext {
   const clinical = analyzeClinicalState(state);
   const packet = JSON.stringify({
     region: state.region,
+    guidelines: { primaryRegion: state.region, searchStatus: guidelineSearch ? "retrieved_not_independently_verified" : "unavailable", searchText: guidelineSearch ?? "Поиск источников не выполнен; актуальность рекомендаций не подтверждена." },
     documents,
     unavailableDocuments: state.documents.filter(d => d.status !== "ready").map((d, i) => ({ document: i + 1, status: d.status })),
     facts: state.facts.filter(f => ready.has(f.documentId)).map(f => ({ concept: f.concept, value: f.value, unit: f.unit, date: f.date, referenceLow: f.referenceLow, referenceHigh: f.referenceHigh, status: f.status, source: `${f.documentId}:${f.line}` })),
@@ -60,5 +72,5 @@ export function buildClinicalContext(state: OwnerState): ClinicalContext {
     documentIssues: state.issues.filter(i => ready.has(i.documentId)).map(i => ({ description: i.description, source: `${i.documentId}:${i.line}` })),
   });
   if (packet.length > CONTEXT_LIMIT) reasons.push("Комплект превышает объём единого контекста; неполный разбор не публикуется.");
-  return { packet, sources, complete: reasons.length === 0, reasons };
+  return { packet, sources, visualSources, complete: reasons.length === 0, reasons };
 }

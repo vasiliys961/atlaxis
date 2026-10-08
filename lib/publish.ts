@@ -10,7 +10,7 @@ import { acceptWording } from "./wording";
 import { synthesizeClinicalState, type ClinicalSynthesis } from "./clinical-synthesis";
 
 function reusableSynthesis(saved?: ClinicalSynthesis): boolean {
-  return Boolean(saved?.version === "1" && (saved.status !== "unavailable" || Date.now() - Date.parse(saved.attemptedAt) < 5 * 60_000));
+  return Boolean(saved?.version === "2" && (saved.status !== "unavailable" || Date.now() - Date.parse(saved.attemptedAt) < 5 * 60_000));
 }
 
 export function themePrompt(title: string, packet: string): string {
@@ -26,7 +26,7 @@ export function reportNeedsRefresh(state: OwnerState): boolean {
   if (state.report?.inputHash !== next.inputHash) return true;
   if (!polzaKey()) return false;
   if (state.report?.status === "ready" && !reusableSynthesis(state.report.clinicalSynthesis)) return true;
-  if (state.report?.status === "ready" && state.facts.length > 0) {
+  if (state.report?.status === "ready" && state.documents.some(d => d.status === "ready" && d.anonymizedText.trim())) {
     const text = state.report.guidelineSearch ?? "";
     if (!text.includes(SEARCH_SCOPE)) return true;
     if (state.region === "RU" && !sonarFoundRussian(text) && !text.includes(RU_NOT_FOUND)) return true;
@@ -81,14 +81,13 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
   const [guidelineSearch] = await Promise.all([
     reuseSearch
       ? Promise.resolve(savedSearch ?? null)
-      : canAsk && state.facts.length > 0 ? searchGuidelines(state) : Promise.resolve(null),
+      : canAsk ? searchGuidelines(state) : Promise.resolve(null),
     canAsk ? narrateThemes(report, state) : Promise.resolve(),
-    same && reusableSynthesis(previous?.clinicalSynthesis)
-      ? Promise.resolve().then(() => { report.clinicalSynthesis = previous!.clinicalSynthesis; })
-      : canAsk ? synthesizeClinicalState(state).then(result => { report.clinicalSynthesis = result; }) : Promise.resolve(),
   ]);
   if (guidelineSearch) report.guidelineSearch = guidelineSearch;
-  if (report.region === "RU" && canAsk && state.facts.length > 0 && !report.guidelineSearch) report.guidelineSearch = RU_NOT_FOUND;
+  if (report.region === "RU" && canAsk && !report.guidelineSearch) report.guidelineSearch = RU_NOT_FOUND;
+  if (same && reusableSynthesis(previous?.clinicalSynthesis)) report.clinicalSynthesis = previous!.clinicalSynthesis;
+  else if (canAsk) report.clinicalSynthesis = await synthesizeClinicalState(state, undefined, report.guidelineSearch);
   report.guidelineNote = guidelineSentence(report.region, report.guidelineSearch);
   state.report = report;
   const last = state.reports[state.reports.length - 1];

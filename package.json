@@ -6,21 +6,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import tsx --test lib/pipeline.test.ts lib/cases.test.ts lib/clinical-engine.test.ts lib/storage-safety.test.ts lib/owner-isolation.test.ts lib/phone-link.test.ts lib/owner-session.test.ts lib/longitudinal.test.ts lib/clinical-synthesis.test.ts",
+    "test": "node --import tsx --test lib/pipeline.test.ts lib/cases.test.ts lib/clinical-engine.test.ts lib/storage-safety.test.ts lib/owner-isolation.test.ts lib/phone-link.test.ts lib/owner-session.test.ts lib/longitudinal.test.ts lib/clinical-synthesis.test.ts lib/dicom-pixels.test.ts lib/literature.test.ts",
     "mcp:doctor-opus": "node --import tsx mcp/doctor-opus/server.ts"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",
     "@vercel/functions": "^3.9.11",
+    "dicom-parser": "^1.8.21",
     "heic-convert": "^2.1.0",
     "mammoth": "^1.13.0",
     "next": "^14.2.15",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.35.5",
     "unpdf": "^1.8.1",
     "xlsx": "^0.18.5",
-    "dicom-parser": "^1.8.21",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -174,3 +174,10 @@ body:has(.professor) .site-footer { width: min(1080px, calc(100% - 460px)); marg
   .meds { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+
+.professor-modes { display: flex; gap: 6px; margin-top: 12px; }
+.professor-modes button { flex: 1; font-size: 12px; }
+.professor-modes button[aria-pressed="false"] { background: var(--paper); color: var(--ink); }
+.professor.collapsed .professor-modes { display: none; }
+.chat-sources { display: block; font-size: 12px; margin-top: 8px; }
+.chat-sources a { display: block; margin-top: 6px; }

@@ -70,20 +70,26 @@ export async function polzaText(
 
 const EYES_PROMPT = [
   "Верни только JSON того, что видно на изображении.",
-  "Ключи: studyDate, lines, measurements, medications.",
+  "Ключи: studyDate, lines, measurements, medications, visualFindings.",
   "studyDate — дата исследования в формате YYYY-MM-DD или пустая строка.",
   "lines — видимые строки текста.",
   "measurements — объекты name, value, unit, referenceLow, referenceHigh.",
   "medications — объекты name, dose, unit.",
   "Не добавляй диагноз, назначение и числа, которых на изображении нет.",
-  "Если текста нет, верни пустые массивы.",
+  "Если текста нет, lines, measurements и medications оставь пустыми. Для фотографии текстового бланка visualFindings оставь пустым.",
+  "Для медицинского изображения дополнительно опиши непосредственно видимые структуры и возможные визуальные изменения в visualFindings: объекты description, region, confidence (low или moderate), frame (номер предоставленного кадра или null).",
+  "Отделяй видимые признаки от текста заключения и диагностических предположений. Не ставь окончательный диагноз, не назначай лечение, не выдумывай размер, плотность/HU, кровоток или расстояние без показанной шкалы и проверенного измерения. Пустой visualFindings не означает отсутствие патологии.",
 ].join(" ");
 
 export async function readImageJson(bytes: Buffer, mime: string): Promise<ImageReading | null> {
+  return readImageFrames([{ bytes, mime, index: 0 }]);
+}
+
+export async function readImageFrames(frames: { bytes: Buffer; mime: string; index: number }[]): Promise<ImageReading | null> {
   const decision = decideProcessing({
     operation: "read_image",
     kind: "image",
-    bytes: bytes.length,
+    bytes: frames.reduce((sum, frame) => sum + frame.bytes.length, 0),
     hasKey: Boolean(polzaKey()),
   });
   if (!decision.allow) return null;
@@ -91,14 +97,17 @@ export async function readImageJson(bytes: Buffer, mime: string): Promise<ImageR
     EYES_MODEL,
     [
       { type: "text", text: EYES_PROMPT },
-      { type: "image_url", image_url: { url: `data:${mime};base64,${bytes.toString("base64")}` } },
+      ...frames.flatMap<Part>(frame => [{ type: "text", text: `Кадр ${frame.index}` }, { type: "image_url", image_url: { url: `data:${frame.mime};base64,${frame.bytes.toString("base64")}` } }]),
     ],
-    2500,
+    3500,
     "eyes",
+    { timeoutMs: 35_000 },
   );
   const json = content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
-    return sanitizeImageReading(JSON.parse(json));
+    const reading = sanitizeImageReading(JSON.parse(json));
+    if (reading?.visualFindings?.some(f => f.frame !== null && !frames.some(frame => frame.index === f.frame))) return null;
+    return reading;
   } catch {
     return null;
   }

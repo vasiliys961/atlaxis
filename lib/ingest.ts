@@ -8,8 +8,9 @@ import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
 import { extractSpreadsheet } from "./spreadsheet";
 import { extractDicom } from "./dicom";
+import { renderDicomFrames } from "./dicom-pixels";
 import { decideProcessing } from "./policy";
-import { polzaKey, readImageJson } from "./polza";
+import { polzaKey, readImageJson, readImageFrames } from "./polza";
 import { contentHash, newId, parseDocument } from "./parse";
 import { PIPELINE_VERSION, type MedicalDocument, type OwnerState } from "./types";
 
@@ -194,6 +195,17 @@ export async function settleDocument(
           : "DICOM принят, но клинического текста в метаданных не найдено.";
         document.studyDate = dicom.studyDate;
         document.anonymizedText = anonymized.text;
+        try {
+          const pixels = await renderDicomFrames(bytes);
+          const reading = pixels.canSend && polzaKey() ? await readImageFrames(pixels.frames.map(frame => ({ bytes: frame.png, mime: "image/png", index: frame.index }))) : null;
+          const scrubbed = reading ? scrubReading(reading) : null;
+          const clean = scrubbed && !scrubbed.leaked ? JSON.parse(scrubbed.json) as typeof reading : null;
+          document.visualAnalysis = { status: clean ? "ready" : "unavailable", totalFrames: pixels.totalFrames, analyzedFrames: clean ? pixels.frames.map(f => f.index) : [], coverage: pixels.coverage, limitations: [...pixels.limitations, ...(!polzaKey() ? ["Ключ визуальной модели не задан."] : [])], findings: clean?.visualFindings ?? [] };
+          document.note = clean ? "Из DICOM извлечены пиксельные кадры и предварительные визуальные наблюдения. Они учитываются отдельно от подтверждённых записей." : "Пиксельные кадры извлечены локально; визуальная интерпретация недоступна. Причины указаны в разборе.";
+        } catch (error) {
+          document.visualAnalysis = { status: "unavailable", totalFrames: 0, analyzedFrames: [], coverage: "sampled", limitations: [error instanceof Error ? error.message : "Не удалось извлечь пиксели DICOM."], findings: [] };
+          document.note = "DICOM-метаданные прочитаны; пиксельный анализ недоступен. Причина указана в разборе.";
+        }
         state.report = null;
         return document;
       } catch {
@@ -219,6 +231,8 @@ export async function settleDocument(
               : "На снимке не нашлось видимого текста. Числа с него в разбор не вошли.";
             document.studyDate = parsed.studyDate;
             document.anonymizedText = scrubbed.json;
+            document.visualAnalysis = { status: "ready", totalFrames: 1, analyzedFrames: [0], coverage: "complete", limitations: ["Один кадр не заменяет полное исследование; визуальные наблюдения ИИ требуют проверки специалистом."], findings: (JSON.parse(scrubbed.json) as typeof reading).visualFindings ?? [] };
+            document.note = "Из изображения извлечены видимый текст, измерения и предварительные визуальные наблюдения. Полное исследование и диагноз ими не подтверждаются.";
             for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });
             for (const medication of parsed.medications) state.medications.push({ ...medication, id: newId(), documentId: id });
             for (const issue of parsed.issues) state.issues.push({ ...issue, id: newId(), documentId: id });

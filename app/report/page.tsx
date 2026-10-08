@@ -227,6 +227,7 @@ export default function ReportPage() {
 
       <section className="section">
         <h2>Комплексная клиническая интерпретация</h2>
+        <p className="quiet">Основная система рекомендаций: {{ RU: "Российская Федерация", US: "США", EU: "Европа" }[report.region]}. Источники других регионов используются для отдельного сопоставления.</p>
         {!report.clinicalSynthesis ? (
           <p className="quiet">{report.modelsReady ? "Общий разбор всех документов ещё готовится." : "Для комплексной интерпретации нужен подключённый медицинский ИИ. Записи из документов доступны ниже."}</p>
         ) : (
@@ -253,6 +254,16 @@ export default function ReportPage() {
           </>
         )}
       </section>
+
+      {report.imagingStudies?.length ? <section className="section">
+        <h2>Что обработано в изображениях</h2>
+        {report.imagingStudies.map(study => <article className="note" key={study.documentId}>
+          <h3>{study.documentName}</h3>
+          <p>{study.status === "ready" ? "Визуальная модель обработала кадры." : "Визуальная интерпретация недоступна."} {study.totalFrames > 0 ? `Просмотрено ${study.analyzedFrames.length} из ${study.totalFrames} кадров файла.` : "Кадры файла не удалось прочитать."}</p>
+          <p className="quiet">{study.coverage === "sampled" ? "Это выборка, а не полный анализ исследования." : "Обработаны кадры этого файла; они могут быть частью более крупной серии."}</p>
+          {study.limitations.map((line, index) => <p className="quiet" key={index}>{line}</p>)}
+        </article>)}
+      </section> : null}
 
       {report.conflicts.length > 0 ? (
         <section className="section">

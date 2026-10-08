@@ -241,7 +241,7 @@ export function buildReport(state: OwnerState): ReportView {
   const inputHash = createHash("sha256")
     .update(JSON.stringify({
       region: state.region,
-      docs: state.documents.map((item) => [item.id, item.contentHash, item.status]),
+      docs: state.documents.map((item) => [item.id, item.contentHash, item.status, item.visualAnalysis ?? null]),
       facts: state.facts.map((item) => [item.documentId, item.concept, item.valueText, item.unit, item.date]),
       medications: state.medications.map((item) => [item.documentId, item.name, item.doseText, item.unit, item.frequency ?? "", item.date]),
       issues: state.issues.map((item) => [item.documentId, item.line, item.otherLine ?? 0, item.description]),
@@ -256,6 +256,7 @@ export function buildReport(state: OwnerState): ReportView {
     limits.push("Снимки и DICOM сохранены отдельно. Текст на самом изображении здесь не проверяется, поэтому измерения с них не читаются.");
   }
 
+  const imagingStudies = state.documents.filter(document => document.visualAnalysis).map(document => ({ documentId: document.id, documentName: document.fileName, status: document.visualAnalysis!.status, totalFrames: document.visualAnalysis!.totalFrames, analyzedFrames: document.visualAnalysis!.analyzedFrames, coverage: document.visualAnalysis!.coverage, limitations: document.visualAnalysis!.limitations }));
   const documents = state.documents.map((item) => ({ id: item.id, name: item.fileName, statusLabel: item.statusLabel, note: item.note }));
   const imageReadings = state.documents
     .filter((item) => item.anonymizedText.trim().startsWith("{"))
@@ -286,6 +287,7 @@ export function buildReport(state: OwnerState): ReportView {
       cannotSay: state.documents.length === 0 ? [] : ["Этот разбор не подтверждает диагноз и не определяет персональную схему лечения."],
       limits,
       imageReadings,
+      imagingStudies,
       timeline: [],
     };
   }
@@ -375,6 +377,7 @@ export function buildReport(state: OwnerState): ReportView {
     cannotSay,
     limits,
     imageReadings,
+    imagingStudies,
     timeline: buildTimeline(state),
     axisResults,
   };

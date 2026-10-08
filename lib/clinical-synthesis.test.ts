@@ -5,6 +5,7 @@ import { synthesizeClinicalState, validateClinicalCandidate, SYNTHESIS_SYSTEM, t
 import { buildReport } from "./report";
 import { emptyState, type OwnerState } from "./types";
 import { reportNeedsRefresh, publishReport } from "./publish";
+import { SEARCH_SCOPE, RU_NOT_FOUND, guidelineSearchPrompt } from "./guidelines-search";
 
 function stateWith(text: string): OwnerState {
   const state = emptyState();
@@ -47,7 +48,7 @@ test("image reading enters context as text only, with correct source lines", () 
   const state = stateWith(JSON.stringify({ studyDate: "2024-01-01", lines: ["Заключение: описание исследования"], measurements: [{ name: "Размер", value: "12", unit: "мм", referenceLow: "", referenceHigh: "" }], medications: [] }));
   state.documents[0]!.fileName = "study.png";
   const context = buildClinicalContext(state);
-  assert.equal(JSON.parse(context.packet).documents[0].modality, "image_text_only");
+  assert.equal(JSON.parse(context.packet).documents[0].modality, "image_text_and_pixel_observations");
   assert.equal(context.sources.get("d:3")?.excerpt, "Размер 12 мм");
   assert.doesNotMatch(context.packet, /image_url|base64/);
 });
@@ -159,6 +160,7 @@ test("approved synthesis is reused when report inputs are unchanged", async () =
   try {
     const state = stateWith(text);
     state.report = buildReport(state);
+    state.report.guidelineSearch = `${SEARCH_SCOPE} ${RU_NOT_FOUND}`;
     state.report.clinicalSynthesis = await synthesizeClinicalState(state, async (model) => JSON.stringify(model.includes("opus") ? candidate() : pass));
     assert.equal(reportNeedsRefresh(state), false);
     const report = await publishReport(state);
@@ -179,20 +181,20 @@ test("publication runs generation and independent review, caches, and invalidate
     models.push(request.model);
     assert.equal(request.messages[0].role, "system");
     assert.equal(request.messages[1].role, "user");
-    return Response.json({ choices: [{ message: { content: JSON.stringify(request.model.includes("opus") ? candidate() : pass) } }] });
+    return Response.json({ choices: [{ message: { content: request.model.includes("sonar") ? `${SEARCH_SCOPE} ${RU_NOT_FOUND}` : JSON.stringify(request.model.includes("opus") ? candidate() : pass) } }] });
   };
   try {
     const state = stateWith(text);
     const first = await publishReport(state);
     assert.equal(first.clinicalSynthesis?.status, "ready");
-    assert.equal(models.length, 2);
+    assert.equal(models.length, 3);
     assert.equal(reportNeedsRefresh(state), false);
     await publishReport(state);
-    assert.equal(models.length, 2);
+    assert.equal(models.length, 3);
     state.documents[0]!.contentHash = "updated";
     assert.equal(reportNeedsRefresh(state), true);
     await publishReport(state);
-    assert.equal(models.length, 4);
+    assert.equal(models.length, 6);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey;
@@ -205,4 +207,45 @@ test("cautious language cannot disguise an instruction to change therapy", () =>
     const c = candidate(); c.practicalAdvice[0]!.text = advice;
     assert.equal(validateClinicalCandidate(c, context), null);
   }
+});
+
+test("chosen guideline region is explicit for Russia, USA and Europe", () => {
+  for (const [region, label] of [["RU", "Российская Федерация"], ["US", "США"], ["EU", "Европа"]] as const) {
+    const prompt = guidelineSearchPrompt(region, "MCV 74 фл");
+    assert.ok(prompt.startsWith(`Выбранная основная система рекомендаций: ${label}`));
+    assert.match(prompt, /Не смешивай пороги/);
+    const state = stateWith(text); state.region = region;
+    const context = JSON.parse(buildClinicalContext(state, "SOURCE: проверка источника").packet);
+    assert.equal(context.guidelines.primaryRegion, region);
+    assert.equal(context.guidelines.searchStatus, "retrieved_not_independently_verified");
+  }
+});
+
+test("guideline evidence reaches generator and independent reviewer", async () => {
+  const state = stateWith(text); state.region = "US";
+  let calls = 0;
+  const result = await synthesizeClinicalState(state, async (_model, prompt) => {
+    calls++;
+    const packet = JSON.parse(prompt);
+    const context = calls === 1 ? packet : packet.context;
+    assert.equal(context.guidelines.primaryRegion, "US");
+    assert.equal(context.guidelines.searchText, "ACTUAL_RETRIEVED_SEARCH");
+    return JSON.stringify(calls === 1 ? candidate() : pass);
+  }, "ACTUAL_RETRIEVED_SEARCH");
+  assert.equal(result.status, "ready");
+  assert.equal(calls, 2);
+});
+
+test("pixel observations are evidence, never a documented diagnosis", () => {
+  const state = stateWith(text);
+  state.documents[0]!.visualAnalysis = { status: "ready", totalFrames: 20, analyzedFrames: [0, 19], coverage: "sampled", limitations: ["Не вся серия"], findings: [{ description: "Визуальная версия", region: "изображение", confidence: "low", frame: 0 }] };
+  const context = buildClinicalContext(state);
+  assert.equal(context.visualSources.has("d:visual:1"), true);
+  const packet = JSON.parse(context.packet);
+  assert.equal(packet.documents[0].pixelAnalysis.coverage, "sampled");
+  const c = candidate();
+  c.hypotheses[0] = { title: "Визуальная версия", text: "Наблюдение требует подтверждения.", evidence: ["d:visual:1"], kind: "possible", missing: [] };
+  assert.ok(validateClinicalCandidate(c, context));
+  c.hypotheses[0].kind = "documented";
+  assert.equal(validateClinicalCandidate(c, context), null);
 });
