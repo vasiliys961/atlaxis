@@ -14,8 +14,9 @@ export async function readText(key: string): Promise<string | null> {
   if (!useBlob()) {
     try {
       return await readFile(localPath(key), "utf8");
-    } catch {
-      return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   }
   const { get } = await import("@vercel/blob");
