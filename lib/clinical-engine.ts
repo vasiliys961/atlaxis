@@ -24,7 +24,7 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
       for (const row of rows) if (row.date) byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
       for (const [date, sameDate] of byDate) {
         const distinct = new Set(sameDate.map(f => `${f.value}|${f.unit.trim().toLowerCase()}`));
-        if (distinct.size > 1) {
+        if (distinct.size > 1 && new Set(sameDate.map(f => f.documentId)).size > 1) {
           const refs = sameDate.map(f => source(state, f));
           const explanation = `В записях показателя ${sameDate[0].label} на ${date} есть расхождение. Уточните первичный бланк.`;
           conflicts.push({ explanation, sourceRefs: refs });
