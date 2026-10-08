@@ -33,10 +33,12 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
       }
       const dated = rows.filter(f => f.date && f.unit.trim() && Number.isFinite(f.value) && !byDate.get(f.date)?.some(other => other.id !== f.id && (other.value !== f.value || other.unit !== f.unit)));
       const units = new Set(dated.map(f => f.unit.trim().toLowerCase()));
-      if (dated.length >= 2 && units.size === 1) {
+      // Do not present a trend when the series contains incompatible units.
+      const allUnits = new Set(rows.map(f => f.unit.trim().toLowerCase()));
+      if (dated.length >= 2 && units.size === 1 && allUnits.size === 1 && !allUnits.has("")) {
         const sorted = [...dated].sort((a,b) => a.date!.localeCompare(b.date!));
         const first = sorted[0], last = sorted[sorted.length - 1];
-        if (first.date !== last.date && first.value !== last.value) {
+        if (first.date !== last.date && first.value !== last.value && !rows.some(f => f.status === "conflicting")) {
           const explanation = `${first.label}: ${first.valueText} ${first.unit} (${first.date}), затем ${last.valueText} ${last.unit} (${last.date}); причина изменения по этим данным не устанавливается.`;
           const sourceRefs = [source(state, first), source(state, last)];
           trends.push({ explanation, sourceRefs });
