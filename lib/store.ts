@@ -20,9 +20,14 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
     let state = emptyState();
     try {
       const raw = await readText(stateKey);
-      if (!raw) throw new Error("owner_state_unavailable");
-      const saved = JSON.parse(raw) as Partial<OwnerState>;
-      state = { ...emptyState(), ...saved };
+      if (raw === null) {
+        state = emptyState(); // New owner only; readText throws on actual I/O failures.
+      } else {
+        if (!raw.trim()) throw new Error("owner_state_corrupt");
+        const saved = JSON.parse(raw) as Partial<OwnerState>;
+        if (!saved || typeof saved !== "object" || Array.isArray(saved)) throw new Error("owner_state_corrupt");
+        state = { ...emptyState(), ...saved };
+      }
       state.documents ??= [];
       state.facts ??= [];
       state.medications ??= [];
