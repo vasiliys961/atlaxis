@@ -27,6 +27,10 @@ async function readLinks(): Promise<PhoneLink[]> {
   const raw = await readText(LINKS_KEY);
   if (raw === null) return [];
   if (!raw.trim()) throw new Error("phone_links_corrupt");
+  return parsePhoneLinks(raw);
+}
+
+export function parsePhoneLinks(raw: string): PhoneLink[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
