@@ -28,9 +28,10 @@ export const GUIDELINES: Guideline[] = [
     organization: "ESC/EAS",
     title: "Focused update of the guidelines for the management of dyslipidaemias",
     version: "2025",
-    publicationDate: "2025",
+    publicationDate: "2025-08-29",
     region: "EU",
-    targets: [{ concept: "LDL_C", population: "very-high cardiovascular risk", value: 1.8, unit: "ммоль/л" }],
+    url: "https://www.escardio.org/guidelines/clinical-practice-guidelines/all-esc-practice-guidelines/dyslipidaemias/",
+    targets: [{ concept: "LDL_C", population: "very-high cardiovascular risk (goal strictly below)", value: 1.4, unit: "ммоль/л" }],
   },
   {
     id: "aha-acc-cholesterol-2018",
