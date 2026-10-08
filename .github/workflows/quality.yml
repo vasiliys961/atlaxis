@@ -15,13 +15,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Temporary lockfile recovery
-        run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          echo LOCKFILE_BASE64_BEGIN
-          base64 -w0 package-lock.json
-          echo
-          echo LOCKFILE_BASE64_END
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit
