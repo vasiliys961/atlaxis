@@ -9,7 +9,8 @@ export const maxDuration = 60;
 export async function POST() {
   try {
     const report = await withOwner(ownerId(), async (state) => {
-      const next = await publishReport(state);
+      if (state.jobs.some(job => job.status === "queued" || job.status === "running")) throw new Error("documents_pending");
+      const next = await publishReport(state, true);
       const stored = state.reports[state.reports.length - 1];
       audit(state, "generate", stored?.id);
       return { ...next, id: stored?.id };

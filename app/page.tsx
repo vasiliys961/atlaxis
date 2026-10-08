@@ -1,5 +1,6 @@
 "use client";
 
+import { VideoDocuments } from "@/components/VideoDocuments";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { patientFileNote } from "@/lib/patient-note";
@@ -11,9 +12,9 @@ type ListedDocument = Omit<MedicalDocument, "anonymizedText"> & {
 };
 
 const REGIONS: { id: Region; label: string; hint: string }[] = [
-  { id: "RU", label: "Россия", hint: "По каждой проблеме ищутся только последние рекомендации: российская и международная. Более ранняя редакция не показывается." },
-  { id: "EU", label: "Европа", hint: "В каталоге только последняя редакция ESC/EAS 2025. Более ранняя не показывается. Цель из записи показана с пометкой группы и не становится личной." },
-  { id: "US", label: "США", hint: "В каталоге только последняя редакция ACC/AHA 2026. Редакция 2018 не показывается." },
+  { id: "RU", label: "Россия", hint: "Основные источники РФ; США и Европа для отдельного сопоставления. Актуальность и применимость требуют проверки." },
+  { id: "EU", label: "Европа", hint: "Основные европейские источники. Популяционный критерий не становится личной лечебной целью." },
+  { id: "US", label: "США", hint: "Основные американские источники. Актуальность редакции требует проверки." },
 ];
 
 export default function DocumentsPage() {
@@ -21,7 +22,7 @@ export default function DocumentsPage() {
   const [report, setReport] = useState<ReportView | null>(null);
   const [region, setRegion] = useState<Region>("RU");
   const [error, setError] = useState("");
-  const [pending, setPending] = useState<"upload" | "delete" | null>(null);
+  const [pending, setPending] = useState<"upload" | "delete" | "generate" | null>(null);
   const [dropping, setDropping] = useState<string | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -91,6 +92,12 @@ export default function DocumentsPage() {
       return;
     }
     await load();
+  }
+
+  async function regenerate() {
+    setPending("generate"); setError("");
+    try { const response = await fetch("/api/reports/generate", {method:"POST"}); const body = await response.json(); if(!response.ok) throw new Error(body.error ?? "Не удалось обновить разбор."); await load(); }
+    catch(reason){setError(reason instanceof Error ? reason.message : "Не удалось обновить разбор.");} finally {setPending(null);}
   }
 
   async function chooseRegion(next: Region) {
@@ -163,7 +170,7 @@ export default function DocumentsPage() {
         <div>
           <p className="kicker">Личный AI-ассистент по здоровью</p>
           <h1>Все ваши анализы — <em>в одну картину</em></h1>
-          <p className="lead">Загрузите бланки, выписки и снимки. ATLAXIS сопоставит медицинские данные, объяснит изменения и возможные причины, покажет диагностические версии и направления лечения для обсуждения с врачом.</p>
+          <p className="lead">Загрузите бланки, выписки и снимки. ATLAXIS сопоставит медицинские данные, объяснит изменения и возможные причины, покажет ограничения и вопросы для обсуждения с врачом.</p>
           <div className="cta">
             <a className="button" href="#upload">Загрузить документы</a>
           </div>
@@ -174,7 +181,7 @@ export default function DocumentsPage() {
           <div className="med m1"><svg><use href="#d-micro" /></svg><span className="lbl">Анализы</span></div>
           <div className="med m3"><svg><use href="#d-therm" /></svg><span className="lbl">Температура</span></div>
           <div className="med m5"><svg><use href="#d-gauge" /></svg><span className="lbl">Давление</span></div>
-          <div className="hello"><div><b>Профессор — в окне справа.</b> Он помогает понять изменения и обсудить проверенные диагностические версии и направления лечения.</div></div>
+          <div className="hello"><div><b>Профессор — в окне справа.</b> Он помогает понять изменения и подготовить вопросы врачу.</div></div>
         </div>
       </section>
 
@@ -216,6 +223,7 @@ export default function DocumentsPage() {
           <button className="chip" type="button" onClick={() => void openPhone()} disabled={pending !== null}>Со смартфона</button>
         </div>
       </div>
+      <VideoDocuments onSent={() => void load()} />
       {error ? <p className="error">{error}</p> : null}
 
       {guideOpen ? (
@@ -228,7 +236,7 @@ export default function DocumentsPage() {
               <p>Готовый снимок — кнопка «PNG или JPEG»: файл, который уже лежит на компьютере. Снимок с iPhone в HEIC сохраняется как JPEG.</p>
               <p>Со смартфона — кнопка показывает QR-код. Наведите камеру телефона: можно снять снимок или выбрать готовый файл. HEIC с iPhone сохраняется как JPEG и попадает в этот же разбор.</p>
               <p>Снимок читается в показатели, которые совпали со словарём. Если текст на изображении не принят, числа с него в разбор не входят.</p>
-              <p>Разбор объединяет записи, динамику, возможные объяснения и практические аспекты лечения. Диагнозы из выписки и новые гипотезы обозначены отдельно.</p>
+              <p>Разбор объединяет записи, динамику, объяснения и вопросы врачу. Диагнозы и назначения из выписки объясняются как записи автора документа.</p>
               <p>У каждой находки есть кнопка «Профессору»: она отправляет одну строку. «Весь разбор профессору» в начале листа отправляет комплект целиком. Профессор объясняет проверенную комплексную интерпретацию и помогает подготовить вопросы врачу.</p>
               <p>У каждого файла своя кнопка «Удалить». Остальные файлы остаются. «Удалить мои данные» стирает весь комплект и спрашивает ещё раз.</p>
             </div>
@@ -253,6 +261,8 @@ export default function DocumentsPage() {
         </div>
       ) : null}
 
+      {ready ? <div className="actions plain"><button type="button" className="secondary" disabled={pending !== null || waiting} onClick={() => void regenerate()}>{pending === "generate" ? "Обновляем…" : "Повторить общий разбор"}</button><p className="quiet">Повторный вызов моделей оплачивается провайдеру. Открытие отчёта и ожидание статуса не повторяют готовый разбор.</p></div> : null}
+
       {ready && report && report.status !== "empty" ? (
         <Link className="bridge" href="/report">
           <span>Разбор собран</span>
@@ -264,7 +274,7 @@ export default function DocumentsPage() {
       <div className="steps">
         <article className="card step"><span className="n">01</span><b>Читает вместе</b><span className="quiet">Бланки, выписки и снимки сводятся в одну картину.</span></article>
         <article className="card step"><span className="n">02</span><b>Находит расхождения</b><span className="quiet">Показывает динамику по датам и места, где записи не сходятся.</span></article>
-        <article className="card step"><span className="n">03</span><b>Не заменяет врача</b><span className="quiet">Гипотезы и советы помогают обсудить состояние с врачом; персональные назначения остаются за ним.</span></article>
+        <article className="card step"><span className="n">03</span><b>Не заменяет врача</b><span className="quiet">Объяснения и вопросы помогают обсудить сведения с врачом; сервис не устанавливает диагноз и не назначает лечение.</span></article>
       </div>
 
       <div className="grid2">

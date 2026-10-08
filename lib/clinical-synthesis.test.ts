@@ -265,3 +265,17 @@ test("legacy diagnostic-treatment schema cannot be published", () => {
   const old = {...c, hypotheses: c.explanations, treatmentDirections: c.discussionPoints};
   assert.equal(validateClinicalCandidate(old,buildClinicalContext(stateWith(text))),null);
 });
+
+test("failed synthesis is cached across polling until explicit repeat", async () => {
+  const oldKey=process.env.OPENROUTER_API_KEY, oldFetch=global.fetch;
+  process.env.OPENROUTER_API_KEY="test";let calls=0;
+  global.fetch=(async()=>{calls++;throw new Error("provider_down");}) as typeof fetch;
+  try {
+    const state=stateWith(text);
+    await publishReport(state);const firstCalls=calls;assert.ok(firstCalls>0);
+    state.report!.clinicalSynthesis!.attemptedAt="2020-01-01T00:00:00Z";
+    assert.equal(reportNeedsRefresh(state),false);
+    await publishReport(state);assert.equal(calls,firstCalls);
+    await publishReport(state,true);assert.ok(calls>firstCalls);
+  }finally{global.fetch=oldFetch;if(oldKey===undefined)delete process.env.OPENROUTER_API_KEY;else process.env.OPENROUTER_API_KEY=oldKey;}
+});

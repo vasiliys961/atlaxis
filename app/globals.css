@@ -181,3 +181,8 @@ body:has(.professor) .site-footer { width: min(1080px, calc(100% - 460px)); marg
 .professor.collapsed .professor-modes { display: none; }
 .chat-sources { display: block; font-size: 12px; margin-top: 8px; }
 .chat-sources a { display: block; margin-top: 6px; }
+
+.video-documents { margin: 20px 0; }
+.video-pages { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 12px; max-height: 520px; overflow: auto; }
+.video-page img { width: 100%; max-height: 220px; object-fit: contain; background: #eee; }
+.video-page span { display: block; font-size: 12px; }
