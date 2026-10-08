@@ -1,3 +1,4 @@
+import { instrumentStudies } from "./instrument-studies";
 import { analyzeClinicalState } from "./clinical-engine";
 import { identityLeft } from "./anonymize";
 import { readingLines, sanitizeImageReading } from "./image-json";
@@ -65,6 +66,7 @@ export function buildClinicalContext(state: OwnerState, guidelineSearch?: string
     region: state.region,
     guidelines: { primaryRegion: state.region, searchStatus: guidelineSearch ? "retrieved_not_independently_verified" : "unavailable", searchText: guidelineSearch ?? "Поиск источников не выполнен; актуальность рекомендаций не подтверждена." },
     documents,
+    instrumentStudies: instrumentStudies(state),
     unavailableDocuments: state.documents.filter(d => d.status !== "ready").map((d, i) => ({ document: i + 1, status: d.status })),
     facts: state.facts.filter(f => ready.has(f.documentId)).map(f => ({ concept: f.concept, value: f.value, unit: f.unit, date: f.date, referenceLow: f.referenceLow, referenceHigh: f.referenceHigh, status: f.status, source: `${f.documentId}:${f.line}` })),
     medications: state.medications.filter(m => ready.has(m.documentId)).map(m => ({ name: m.name, dose: m.dose, unit: m.unit, frequency: m.frequency ?? null, date: m.date, source: `${m.documentId}:${m.line}` })),

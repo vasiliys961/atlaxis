@@ -1,3 +1,4 @@
+import { instrumentStudies } from "./instrument-studies";
 import { createHash } from "crypto";
 import { identityLeft } from "./anonymize";
 import { AXES } from "./catalog";
@@ -288,6 +289,7 @@ export function buildReport(state: OwnerState): ReportView {
       limits,
       imageReadings,
       imagingStudies,
+      instrumentStudies: instrumentStudies(state),
       timeline: [],
     };
   }
@@ -378,6 +380,7 @@ export function buildReport(state: OwnerState): ReportView {
     limits,
     imageReadings,
     imagingStudies,
+    instrumentStudies: instrumentStudies(state),
     timeline: buildTimeline(state),
     axisResults,
   };

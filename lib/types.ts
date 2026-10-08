@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-08.5";
+export const PIPELINE_VERSION = "2026-10-08.6";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
@@ -99,6 +99,7 @@ export type ReportBlock = {
 };
 
 export type ReportView = {
+  instrumentStudies?: import("./instrument-studies").InstrumentStudy[];
   imagingStudies?: { documentId: string; documentName: string; status: "ready" | "unavailable"; totalFrames: number; analyzedFrames: number[]; coverage: "complete" | "sampled"; limitations: string[] }[];
   clinicalSynthesis?: import("./clinical-synthesis").ClinicalSynthesis;
   generatedAt: string;

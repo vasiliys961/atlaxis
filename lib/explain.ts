@@ -1,3 +1,4 @@
+import { instrumentStudies } from "./instrument-studies";
 import { catalogEntries, targetMark } from "./guidelines";
 import { LUNA, OPUS, SONNET } from "./models";
 import { polzaKey, polzaText } from "./polza";
@@ -40,6 +41,7 @@ function dossier(report: ReportView): string {
     report.headline,
     report.intro,
     report.guidelineNote,
+    ...(report.instrumentStudies?.length ? ["Напечатанные параметры ЭКГ и спирометрии (не диагноз):", JSON.stringify(report.instrumentStudies)] : []),
     ...(synthesis ? ["Проверенная комплексная интерпретация:", JSON.stringify({ overview: synthesis.overview, hypotheses: synthesis.hypotheses, treatmentDirections: synthesis.treatmentDirections, practicalAdvice: synthesis.practicalAdvice, missingContext: synthesis.missingContext })] : []),
     ...catalogEntries(report.region).map((item) => `${item.place}. ${item.organization}, версия ${item.version}. ${targetMark(item)}`),
     report.guidelineSearch ? `Найденные рекомендации:\n${report.guidelineSearch}` : "",
@@ -58,6 +60,11 @@ function dossier(report: ReportView): string {
 export function acceptExplanation(candidate: string, state: OwnerState): boolean {
   const synthesis = state.report?.clinicalSynthesis?.status === "ready" ? state.report.clinicalSynthesis : null;
   const cited = [state.report?.guidelineSearch ?? "", ...catalogEntries(state.region).map((item) => targetMark(item)), ...(synthesis ? [synthesis.overview?.text ?? "", ...synthesis.hypotheses.map(item => item.text), ...synthesis.treatmentDirections.map(item => item.text), ...synthesis.practicalAdvice.map(item => item.text)] : [])].join("\n");
+  const printed = instrumentStudies(state).flatMap(study => study.parameters.filter(p => p.status === "printed"));
+  for (const match of candidate.matchAll(/(-?\d+(?:[.,]\d+)?)\s*(ms|мс|bpm|уд\/мин|L\/s|л\/с|L\/min|л\/мин|L)(?![\p{L}])/giu)) {
+    const normalize = (unit: string) => unit.toLowerCase().replace("ms", "мс").replace("bpm", "уд/мин").replace("l", "л").replace("/s", "/с").replace("/min", "/мин");
+    if (!printed.some(p => Number(p.valueText?.replace(",", ".")) === Number(match[1].replace(",", ".")) && normalize(p.unit ?? "") === normalize(match[2]))) return false;
+  }
   return acceptWording(candidate, state, cited) && !TREATMENT.test(candidate);
 }
 

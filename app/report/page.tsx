@@ -255,6 +255,19 @@ export default function ReportPage() {
         )}
       </section>
 
+      {report.instrumentStudies?.length ? <section className="section">
+        <h2>Напечатанные параметры ЭКГ и спирометрии</h2>
+        {report.instrumentStudies.map(study => <article className="note" key={`${study.documentId}-${study.kind}`}>
+          <h3>{study.kind === "ecg" ? "ЭКГ" : "Спирометрия"}: {study.documentName}</h3>
+          {study.parameters.map((parameter, index) => <div key={index}>
+            <p>{parameter.name}: {parameter.status === "printed" ? `${parameter.valueText} ${parameter.unit}` : "значение или столбец не определены однозначно"}.</p>
+            <p className="quiet">{parameter.context}. Строка {parameter.source.line}: {parameter.source.excerpt}</p>
+          </div>)}
+          {study.recordedConclusions.map(source => <p key={source.line}>Запись в документе, не вывод сервиса: {source.excerpt}</p>)}
+          {study.limitations.map((text, i) => <p className="quiet" key={i}>{text}</p>)}
+        </article>)}
+      </section> : null}
+
       {report.imagingStudies?.length ? <section className="section">
         <h2>Что обработано в изображениях</h2>
         {report.imagingStudies.map(study => <article className="note" key={study.documentId}>
