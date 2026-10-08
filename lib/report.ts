@@ -163,27 +163,14 @@ function guidelineNote(state: OwnerState): string {
 }
 
 function trends(state: OwnerState): ReportBlock[] {
-  const groups = new Map<string, MedicalFact[]>();
-  for (const fact of state.facts) {
-    const list = groups.get(fact.concept) ?? [];
-    list.push(fact);
-    groups.set(fact.concept, list);
-  }
-  const blocks: ReportBlock[] = [];
-  for (const list of groups.values()) {
-    const dated = list.filter((fact) => fact.date).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
-    if (dated.length < 2) continue;
-    const first = dated[0];
-    const last = dated[dated.length - 1];
-    if (!first || !last || first.unit !== last.unit) continue;
-    const direction = last.value > first.value ? "выросло" : last.value < first.value ? "снизилось" : "не изменилось";
-    blocks.push({
-      title: first.label,
-      body: `${first.valueText} ${first.unit} (${first.date}), затем ${last.valueText} ${last.unit} (${last.date}). Значение ${direction}. Это две точки из документов, без вывода о причине.`,
-      sources: [sourceFor(state, first), sourceFor(state, last)],
-    });
-  }
-  return blocks;
+  // The same validated series must drive both the axis panel and the narrative.
+  // Never bypass unit, date and contradiction checks with a second trend algorithm.
+  const analysis = analyzeClinicalState(state);
+  return analysis.axes.flatMap(axis => axis.trends.map(trend => ({
+    title: axis.facts.find(fact => trend.sourceRefs.some(ref => ref.documentId === fact.documentId && ref.line === fact.line))?.label ?? axis.title,
+    body: trend.explanation.includes(": ") ? trend.explanation.split(": ").slice(1).join(": ") : trend.explanation,
+    sources: trend.sourceRefs,
+  })));
 }
 
 function doseChanges(state: OwnerState): ReportBlock[] {
