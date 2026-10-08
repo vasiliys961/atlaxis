@@ -100,7 +100,8 @@ test("simple blank extracts facts and stays a reference", async () => {
 test("one marker across years is a change, not a diagnosis", async () => {
   const state = await load(["ldl-2019.txt", "ldl-2024.txt"]);
   const report = buildReport(state);
-  assert.match(report.changes.map((item) => item.body).join("\n"), /снизилось/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /4\.2 ммоль\/л.*затем 3\.4 ммоль\/л/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /причина изменения по этим данным не устанавливается/);
   assert.doesNotMatch(report.changes.map((item) => item.body).join("\n"), /диагноз/);
 });
 
@@ -122,10 +123,10 @@ test("two doses in one document stay a conflict", async () => {
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /одной дате или к одному документу/);
 });
 
-test("same month links a drug and a lab value without a cause", async () => {
+test("same month does not imply a clinical relationship between drug and lab", async () => {
   const state = await load(["simple.txt", "dose-b.txt"]);
   const report = buildReport(state);
-  assert.match(report.relationships.map((item) => item.body).join("\n"), /тот же период/);
+  assert.equal(report.relationships.length, 0);
   assert.match(report.themes.map((item) => item.body).join("\n"), /В документе:/);
   assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал/);
   assert.match(report.gaps.join("\n"), /Ось «Давление»/);
