@@ -10,7 +10,7 @@ import { acceptWording } from "./wording";
 export const EXPLAIN_SYSTEM = `Ты отвечаешь с компетенцией профессора медицины из Doctor Opus: доказательная медицина, точная структура, сначала прямой ответ, затем плотное разъяснение терминов простым языком.
 
 Единственная задача — рекомендации по уже полученным сведениям.
-Рекомендация здесь — это разъяснение: что написано в документах, как значение соотносится с референсом бланка, что изменилось между датами, чего в комплекте нет и что стоит показать врачу.
+Рекомендация здесь — это разъяснение: что написано в документах, как значение соотносится с референсом бланка, что изменилось между датами, чего в комплекте нет и что стоит показать врачу. Если есть проверенная комплексная интерпретация, объясни её диагностические версии, альтернативы, направления лечения и практические советы. Не своди обсуждение всего комплекта к липидам или одной теме. Не добавляй новых гипотез и лечебных советов вне проверенной интерпретации.
 
 Не ставь диагноз. Не назначай и не отменяй лечение, препараты, дозы и схемы.
 Не придумывай числа, цели и дозы, которых нет в сведениях ниже.
@@ -30,14 +30,16 @@ export function findingBrief(question: string): string {
 
 export function sheetBrief(question: string): string {
   if (!question.startsWith(SHEET_MARK)) return "";
-  return "Это весь лист, не одна строка. Объясни, как читать комплект вместе: что записано, как менялось между датами, где две записи об одном и том же не сходятся, чего в комплекте нет и какие вопросы уже стоят для врача. Причину не называй. Диагноз, лечение и новые числа не добавляй.";
+  return "Это весь комплект. Объясни взаимосвязи разных систем, динамику, расхождения и недостающие данные. Используй только уже проверенные диагностические версии и направления лечения, если они представлены. Сохрани их предварительный статус и ограничения. Не добавляй новых диагнозов, персональных назначений и чисел.";
 }
 
 function dossier(report: ReportView): string {
+  const synthesis = report.clinicalSynthesis?.status === "ready" ? report.clinicalSynthesis : null;
   return [
     report.headline,
     report.intro,
     report.guidelineNote,
+    ...(synthesis ? ["Проверенная комплексная интерпретация:", JSON.stringify({ overview: synthesis.overview, hypotheses: synthesis.hypotheses, treatmentDirections: synthesis.treatmentDirections, practicalAdvice: synthesis.practicalAdvice, missingContext: synthesis.missingContext })] : []),
     ...catalogEntries(report.region).map((item) => `${item.place}. ${item.organization}, версия ${item.version}. ${targetMark(item)}`),
     report.guidelineSearch ? `Найденные рекомендации:\n${report.guidelineSearch}` : "",
     ...report.themes.map((item) => `${item.title}\n${item.body}\n${(item.notes ?? []).map((note) => note.text).join("\n")}`),
@@ -53,7 +55,8 @@ function dossier(report: ReportView): string {
 }
 
 export function acceptExplanation(candidate: string, state: OwnerState): boolean {
-  const cited = [state.report?.guidelineSearch ?? "", ...catalogEntries(state.region).map((item) => targetMark(item))].join("\n");
+  const synthesis = state.report?.clinicalSynthesis?.status === "ready" ? state.report.clinicalSynthesis : null;
+  const cited = [state.report?.guidelineSearch ?? "", ...catalogEntries(state.region).map((item) => targetMark(item)), ...(synthesis ? [synthesis.overview?.text ?? "", ...synthesis.hypotheses.map(item => item.text), ...synthesis.treatmentDirections.map(item => item.text), ...synthesis.practicalAdvice.map(item => item.text)] : [])].join("\n");
   return acceptWording(candidate, state, cited) && !TREATMENT.test(candidate);
 }
 
@@ -88,6 +91,7 @@ async function explain(state: OwnerState, question: string): Promise<string> {
   if (kind === "urgent") return SAFETY_URGENT;
   const report = buildReport(state);
   if (state.report?.inputHash === report.inputHash) {
+    report.clinicalSynthesis = state.report.clinicalSynthesis;
     if (state.report.guidelineSearch) report.guidelineSearch = state.report.guidelineSearch;
     for (const theme of report.themes) {
       const saved = state.report.themes.find((item) => item.title === theme.title && item.body === theme.body);

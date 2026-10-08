@@ -32,6 +32,7 @@ const CONCEPTS: { id: string; label: string; pattern: RegExp }[] = [
 ];
 
 const DATE_LINE = /дат[аы](?:\s+исследовани[\p{L}]+|\s+анализа)?\s*[:.]?\s*(\d{4}-\d{2}-\d{2}|\d{2}[./]\d{2}[./]\d{4})/iu;
+const DATE_HEADER = /^дат[аы](?:\s+исследовани[\p{L}]+|\s+анализа)?\s*[:.]/iu;
 const INSTRUCTION = /игнорируй предыдущ|ignore previous|поставь диагноз|you are now|системн[\p{L}]*\s+промпт/iu;
 const CONCLUSION = /заключен/i;
 const NORMAL_CLAIM = /в пределах нормы|показател\w+\s+в норме|\bнорма\b/i;
@@ -58,6 +59,20 @@ function isoDate(raw: string): string | null {
 
 function numberFrom(raw: string): number {
   return Number(raw.replace(",", "."));
+}
+
+function measurementFrom(line: string, pattern: RegExp): { valueText: string; unit: string; low: number | null; high: number | null } | null {
+  const marker = line.match(pattern);
+  if (!marker || marker.index == null) return null;
+  // Read the result immediately after the marker. Digits in HbA1c, 10^9/l
+  // or ml/min/1.73m2 must never become the measured value.
+  const tail = line.slice(marker.index + marker[0].length).trim().replace(/^[:=]\s*/, "");
+  const result = tail.match(/^(-?\d+(?:[.,]\d+)?)(.*)$/u);
+  if (!result?.[1]) return null;
+  const rest = (result[2] ?? "").trim();
+  const range = rest.match(/^(.*?)\s*(-?\d+(?:[.,]\d+)?)\s*[-–—]\s*(-?\d+(?:[.,]\d+)?)$/u);
+  const unit = (range?.[1] ?? rest).trim();
+  return { valueText: result[1], unit, low: range?.[2] ? numberFrom(range[2]) : null, high: range?.[3] ? numberFrom(range[3]) : null };
 }
 
 function laterThanToday(iso: string): boolean {
@@ -104,9 +119,12 @@ export function parseDocument(text: string): ParsedDocument {
     }
 
     const dated = line.match(DATE_LINE);
-    if (dated?.[1]) {
-      const parsedDate = isoDate(dated[1]);
+    if (dated?.[1] || DATE_HEADER.test(line)) {
+      const parsedDate = dated?.[1] ? isoDate(dated[1]) : null;
       if (!parsedDate || laterThanToday(parsedDate)) {
+        // A rejected date starts a new section with unknown chronology.
+        // Never attach its measurements or medications to the previous study.
+        studyDate = null;
         issues.push({
           description: "Дата в строке не складывается в календарную или стоит позже сегодняшнего дня. Она не подставлена.",
           line: lineNo,
@@ -173,8 +191,8 @@ export function parseDocument(text: string): ParsedDocument {
         return;
       }
 
-      const valueMatch = line.match(/(-?\d+(?:[.,]\d+)?)\s*([A-Za-zА-Яа-яЁё/%µμ. ]+?)?(?:\s+(\d+(?:[.,]\d+)?)\s*[-–—]\s*(\d+(?:[.,]\d+)?))?$/);
-      if (!valueMatch?.[1]) {
+      const valueMatch = measurementFrom(line, concept.pattern);
+      if (!valueMatch) {
         if (line.replace(concept.pattern, "").trim()) {
           issues.push({
             description: `В строке назван ${concept.label}, но числа рядом нет. Значение не подставлено.`,
@@ -184,15 +202,15 @@ export function parseDocument(text: string): ParsedDocument {
         }
         return;
       }
-      const low = valueMatch[3] ? numberFrom(valueMatch[3]) : null;
-      const high = valueMatch[4] ? numberFrom(valueMatch[4]) : null;
-      const value = numberFrom(valueMatch[1]);
+      const low = valueMatch.low;
+      const high = valueMatch.high;
+      const value = numberFrom(valueMatch.valueText);
       const fact = {
         concept: concept.id,
         label: concept.label,
         value,
-        valueText: valueMatch[1].replace(",", "."),
-        unit: (valueMatch[2] ?? "").trim(),
+        valueText: valueMatch.valueText.replace(",", "."),
+        unit: valueMatch.unit,
         date: studyDate,
         referenceLow: low,
         referenceHigh: high,

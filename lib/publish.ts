@@ -7,6 +7,11 @@ import { polzaKey, polzaText } from "./polza";
 import { buildReport } from "./report";
 import type { OwnerState, ReportView } from "./types";
 import { acceptWording } from "./wording";
+import { synthesizeClinicalState, type ClinicalSynthesis } from "./clinical-synthesis";
+
+function reusableSynthesis(saved?: ClinicalSynthesis): boolean {
+  return Boolean(saved?.version === "1" && (saved.status !== "unavailable" || Date.now() - Date.parse(saved.attemptedAt) < 5 * 60_000));
+}
 
 export function themePrompt(title: string, packet: string): string {
   return `Это одна тема уже собранного разбора, не весь комплект. Перескажи только её одним законченным абзацем. Не связывай с другими темами. Не ставь диагноз, не назначай лечение и не добавляй чисел.\n\nТема: ${title}\n${packet}`;
@@ -20,6 +25,7 @@ export function reportNeedsRefresh(state: OwnerState): boolean {
   const next = buildReport(state);
   if (state.report?.inputHash !== next.inputHash) return true;
   if (!polzaKey()) return false;
+  if (state.report?.status === "ready" && !reusableSynthesis(state.report.clinicalSynthesis)) return true;
   if (state.report?.status === "ready" && state.facts.length > 0) {
     const text = state.report.guidelineSearch ?? "";
     if (!text.includes(SEARCH_SCOPE)) return true;
@@ -77,6 +83,9 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
       ? Promise.resolve(savedSearch ?? null)
       : canAsk && state.facts.length > 0 ? searchGuidelines(state) : Promise.resolve(null),
     canAsk ? narrateThemes(report, state) : Promise.resolve(),
+    same && reusableSynthesis(previous?.clinicalSynthesis)
+      ? Promise.resolve().then(() => { report.clinicalSynthesis = previous!.clinicalSynthesis; })
+      : canAsk ? synthesizeClinicalState(state).then(result => { report.clinicalSynthesis = result; }) : Promise.resolve(),
   ]);
   if (guidelineSearch) report.guidelineSearch = guidelineSearch;
   if (report.region === "RU" && canAsk && state.facts.length > 0 && !report.guidelineSearch) report.guidelineSearch = RU_NOT_FOUND;

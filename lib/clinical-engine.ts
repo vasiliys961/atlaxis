@@ -1,17 +1,19 @@
 import { AXES, describeAxes, type AxisStatus } from "./catalog";
 import type { MedicalFact, OwnerState, SourceRef } from "./types";
+import { reconcileMedications, medicationChangeText, medicationConflictText } from "./medication-reconciliation";
 
 type Trend = { explanation: string; sourceRefs: SourceRef[] };
 type Conflict = { explanation: string; sourceRefs: SourceRef[] };
 type Relation = { type: "trend" | "same_measurement_different_document"; explanation: string; sourceRefs: SourceRef[] };
 type AxisResult = { axisId: string; title: string; status: AxisStatus; facts: MedicalFact[]; trends: Trend[]; conflicts: Conflict[]; missing: string[] };
 
-function source(state: OwnerState, fact: MedicalFact): SourceRef {
+function source(state: OwnerState, fact: Pick<MedicalFact, "documentId" | "line" | "excerpt">): SourceRef {
   return { documentId: fact.documentId, documentName: state.documents.find(d => d.id === fact.documentId)?.fileName ?? "документ", line: fact.line, excerpt: fact.excerpt };
 }
 export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; relations: Relation[] } {
   const ready = new Set(state.documents.filter(d => d.status === "ready").map(d => d.id));
   const facts = state.facts.filter(f => ready.has(f.documentId));
+  const medicationAnalysis = reconcileMedications(state);
   const relations: Relation[] = [];
   const eligibleDocuments = state.documents.filter(d => ready.has(d.id));
   const axisStatuses = new Map(describeAxes({ facts, medications: state.medications.filter(m => ready.has(m.documentId)), documents: eligibleDocuments, issues: state.issues.filter(i => ready.has(i.documentId)) }).map(axis => [axis.id, axis.status]));
@@ -20,6 +22,11 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
     const missing = axis.required.filter(c => !axisFacts.some(f => f.concept === c));
     const trends: Trend[] = [];
     const conflicts: Conflict[] = [];
+    if (axis.id === "dose_over_time") {
+      trends.push(...medicationAnalysis.changes.map(group => ({ explanation: medicationChangeText(group), sourceRefs: group.mentions.map(item => source(state, item)) })));
+      conflicts.push(...medicationAnalysis.conflicts.map(group => ({ explanation: medicationConflictText(group), sourceRefs: group.mentions.map(item => source(state, item)) })));
+      missing.push(...medicationAnalysis.missing);
+    }
     for (const concept of axis.concepts) {
       const rows = axisFacts.filter(f => f.concept === concept);
       const byDate = new Map<string, MedicalFact[]>();

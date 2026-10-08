@@ -472,8 +472,8 @@ test("a finding becomes a professor question without a diagnosis request", () =>
   assert.equal(findingBrief("что значит это число"), "");
   const sheet = sheetQuestion();
   assert.match(sheet, /весь комплект/);
-  assert.match(sheetBrief(sheet), /весь лист/);
-  assert.match(sheetBrief(sheet), /Диагноз/);
+  assert.match(sheetBrief(sheet), /весь комплект/);
+  assert.match(sheetBrief(sheet), /проверенные диагностические версии/);
   assert.equal(sheetBrief(findingQuestion("гемоглобин 108 г/л")), "");
   assert.equal(findingBrief(sheet), "");
 });

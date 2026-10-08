@@ -17,7 +17,7 @@ export function discussFinding(text: string): void {
 const SHEET = "Обсудить весь разбор: ";
 
 export function sheetQuestion(): string {
-  return `${SHEET}Как читать весь комплект вместе: что записано, как это менялось, где записи не сходятся и чего в комплекте нет.`;
+  return `${SHEET}Как понимать весь комплект вместе: динамику, взаимосвязи, проверенные диагностические версии, направления лечения, практические советы и недостающие сведения.`;
 }
 
 export function discussSheet(): void {

@@ -225,6 +225,35 @@ export default function ReportPage() {
         </div>
       </section>
 
+      <section className="section">
+        <h2>Комплексная клиническая интерпретация</h2>
+        {!report.clinicalSynthesis ? (
+          <p className="quiet">{report.modelsReady ? "Общий разбор всех документов ещё готовится." : "Для комплексной интерпретации нужен подключённый медицинский ИИ. Записи из документов доступны ниже."}</p>
+        ) : (
+          <>
+            <p className="quiet">{report.clinicalSynthesis.message}</p>
+            {report.clinicalSynthesis.status === "ready" ? (
+              <>
+                {report.clinicalSynthesis.overview ? <article className="note"><h3>{report.clinicalSynthesis.overview.title}</h3><Statements block={{ title: report.clinicalSynthesis.overview.title, body: report.clinicalSynthesis.overview.text, sources: report.clinicalSynthesis.overview.sources }} /></article> : null}
+                {report.clinicalSynthesis.hypotheses.length > 0 ? <h3>Диагнозы из документов и возможные объяснения</h3> : null}
+                {report.clinicalSynthesis.hypotheses.map((item, index) => (
+                  <article className="note" key={`hypothesis-${index}`}>
+                    <h4>{item.kind === "documented" ? "Указано в документе: " : "Диагностическая версия: "}{item.title}</h4>
+                    <Statements block={{ title: item.title, body: item.text, lead: item.kind === "possible" ? "Это предположение для обсуждения с врачом, требующее проверки." : "Это запись в исходном документе; её актуальность оценивает врач.", sources: item.sources }} />
+                    {item.missing.map((text, i) => <p className="quiet" key={i}>Для уточнения: {text}</p>)}
+                  </article>
+                ))}
+                {report.clinicalSynthesis.treatmentDirections.length > 0 ? <h3>Направления лечения для обсуждения</h3> : null}
+                {report.clinicalSynthesis.treatmentDirections.map((item, index) => <article className="note" key={`treatment-${index}`}><h4>{item.title}</h4><Statements block={{ title: item.title, body: item.text, sources: item.sources }} /></article>)}
+                {report.clinicalSynthesis.practicalAdvice.length > 0 ? <h3>Практические аспекты</h3> : null}
+                {report.clinicalSynthesis.practicalAdvice.map((item, index) => <article className="note" key={`advice-${index}`}><h4>{item.title}</h4><Statements block={{ title: item.title, body: item.text, sources: item.sources }} /></article>)}
+                {report.clinicalSynthesis.missingContext.length > 0 ? <details><summary>Каких сведений не хватает для общего вывода</summary>{report.clinicalSynthesis.missingContext.map((text, index) => <p key={index}>{text}</p>)}</details> : null}
+              </>
+            ) : null}
+          </>
+        )}
+      </section>
+
       {report.conflicts.length > 0 ? (
         <section className="section">
           <h2>Где записи не сходятся</h2>

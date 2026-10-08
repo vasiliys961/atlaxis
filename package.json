@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import tsx --test lib/pipeline.test.ts lib/cases.test.ts lib/clinical-engine.test.ts lib/storage-safety.test.ts lib/owner-isolation.test.ts lib/phone-link.test.ts lib/owner-session.test.ts lib/longitudinal.test.ts",
+    "test": "node --import tsx --test lib/pipeline.test.ts lib/cases.test.ts lib/clinical-engine.test.ts lib/storage-safety.test.ts lib/owner-isolation.test.ts lib/phone-link.test.ts lib/owner-session.test.ts lib/longitudinal.test.ts lib/clinical-synthesis.test.ts",
     "mcp:doctor-opus": "node --import tsx mcp/doctor-opus/server.ts"
   },
   "dependencies": {

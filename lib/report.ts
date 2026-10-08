@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { identityLeft } from "./anonymize";
 import { AXES } from "./catalog";
 import { analyzeClinicalState } from "./clinical-engine";
+import { reconcileMedications, medicationChangeText, medicationConflictText } from "./medication-reconciliation";
 import { catalogEntries, guidelineSentence, guidelinesFor } from "./guidelines";
 import { PIPELINE_VERSION, type MedicalFact, type MedicationMention, type OwnerState, type ReportBlock, type ReportView, type SourceRef, type TimelineEvent } from "./types";
 
@@ -165,7 +166,7 @@ function trends(state: OwnerState): ReportBlock[] {
   // The same validated series must drive both the axis panel and the narrative.
   // Never bypass unit, date and contradiction checks with a second trend algorithm.
   const analysis = analyzeClinicalState(state);
-  return analysis.axes.flatMap(axis => axis.trends.map(trend => ({
+  return analysis.axes.filter(axis => axis.axisId !== "dose_over_time").flatMap(axis => axis.trends.map(trend => ({
     title: axis.facts.find(fact => trend.sourceRefs.some(ref => ref.documentId === fact.documentId && ref.line === fact.line))?.label ?? axis.title,
     body: trend.explanation.includes(": ") ? trend.explanation.split(": ").slice(1).join(": ") : trend.explanation,
     sources: trend.sourceRefs,
@@ -173,48 +174,11 @@ function trends(state: OwnerState): ReportBlock[] {
 }
 
 function doseChanges(state: OwnerState): ReportBlock[] {
-  const byDrug = new Map<string, typeof state.medications>();
-  for (const mention of state.medications) {
-    const key = `${mention.name}|${mention.unit}`;
-    const list = byDrug.get(key) ?? [];
-    list.push(mention);
-    byDrug.set(key, list);
-  }
-  const blocks: ReportBlock[] = [];
-  for (const list of byDrug.values()) {
-    const dated = list.filter((item) => item.date).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
-    const sameDate = new Map<string, typeof dated>();
-    const sameDocument = new Map<string, typeof dated>();
-    for (const item of dated) {
-      const atDate = sameDate.get(item.date ?? "") ?? [];
-      atDate.push(item);
-      sameDate.set(item.date ?? "", atDate);
-      const inDocument = sameDocument.get(item.documentId) ?? [];
-      inDocument.push(item);
-      sameDocument.set(item.documentId, inDocument);
-    }
-    const clashes =
-      [...sameDate.values()].some((group) => new Set(group.map((item) => item.dose)).size > 1) ||
-      [...sameDocument.values()].some((group) => new Set(group.map((item) => item.dose)).size > 1);
-    if (clashes) continue;
-    if (new Set(dated.map((item) => item.dose)).size < 2 || new Set(dated.map((item) => item.date)).size < 2) continue;
-    const first = dated[0];
-    if (!first) continue;
-    blocks.push({
-      title: "Смена дозы",
-      body: `Для «${first.name}» в разные даты записаны разные дозы: ${dated.map((item) => `${writtenDose(item)} (${item.date})`).join(", затем ")}. Это смена записи во времени, не спор об одной дате.`,
-      sources: dated.map((item) => {
-        const document = state.documents.find((doc) => doc.id === item.documentId);
-        return {
-          documentId: item.documentId,
-          documentName: document?.fileName ?? "документ",
-          line: item.line,
-          excerpt: item.excerpt,
-        };
-      }),
-    });
-  }
-  return blocks;
+  return reconcileMedications(state).changes.map(group => ({
+    title: "Смена дозы",
+    body: medicationChangeText(group),
+    sources: group.mentions.map(item => sourceForMedication(state, item)),
+  }));
 }
 
 function conflicts(state: OwnerState): ReportBlock[] {
@@ -243,54 +207,12 @@ function conflicts(state: OwnerState): ReportBlock[] {
     });
   }
 
-  const byDrug = new Map<string, typeof state.medications>();
-  for (const mention of state.medications) {
-    const key = `${mention.name}|${mention.unit}`;
-    const list = byDrug.get(key) ?? [];
-    list.push(mention);
-    byDrug.set(key, list);
-  }
-  for (const list of byDrug.values()) {
-    const disputed = new Map<string, (typeof list)[number]>();
-    const remember = (item: (typeof list)[number]) => disputed.set(item.id, item);
-    const byDate = new Map<string, typeof list>();
-    const byDocument = new Map<string, typeof list>();
-    for (const item of list) {
-      if (item.date) {
-        const dated = byDate.get(item.date) ?? [];
-        dated.push(item);
-        byDate.set(item.date, dated);
-      }
-      const inDocument = byDocument.get(item.documentId) ?? [];
-      inDocument.push(item);
-      byDocument.set(item.documentId, inDocument);
-    }
-    for (const dated of byDate.values()) {
-      if (new Set(dated.map((item) => item.dose)).size > 1) dated.forEach(remember);
-    }
-    for (const inDocument of byDocument.values()) {
-      if (new Set(inDocument.map((item) => item.dose)).size > 1) inDocument.forEach(remember);
-    }
-    const clash = [...disputed.values()];
-    const first = list[0];
-    if (!first) continue;
-    if (clash.length > 0) {
-      const written = clash.map((item) => `${writtenDose(item)}${item.date ? ` (${item.date})` : ""}`).join(" и ");
-      blocks.push({
-        title: "Разные дозы",
-        body: `Для «${first.name}» разные дозы относятся к одной дате или к одному документу: ${written}. Разбор оставляет обе записи как есть.`,
-        sources: clash.map((item) => {
-          const document = state.documents.find((doc) => doc.id === item.documentId);
-          return {
-            documentId: item.documentId,
-            documentName: document?.fileName ?? "документ",
-            line: item.line,
-            excerpt: item.excerpt,
-          };
-        }),
-      });
-      continue;
-    }
+  for (const group of reconcileMedications(state).conflicts) {
+    blocks.push({
+      title: "Разные дозы",
+      body: medicationConflictText(group),
+      sources: group.mentions.map(item => sourceForMedication(state, item)),
+    });
   }
 
   const sameDay = new Map<string, MedicalFact[]>();
@@ -328,7 +250,7 @@ export function buildReport(state: OwnerState): ReportView {
     .digest("hex");
 
   const limits = [
-    "Это справочный разбор загруженных документов. Он не ставит диагноз и не назначает лечение.",
+    "Разбор объясняет медицинские документы, возможные причины изменений и направления лечения для обсуждения с врачом. Он не подтверждает диагноз и не назначает персональную схему лечения.",
   ];
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
     limits.push("Снимки и DICOM сохранены отдельно. Текст на самом изображении здесь не проверяется, поэтому измерения с них не читаются.");
@@ -361,7 +283,7 @@ export function buildReport(state: OwnerState): ReportView {
       gaps: [],
       questions: [],
       relationships: [],
-      cannotSay: state.documents.length === 0 ? [] : ["По этим документам нельзя назвать диагноз или схему лечения."],
+      cannotSay: state.documents.length === 0 ? [] : ["Этот разбор не подтверждает диагноз и не определяет персональную схему лечения."],
       limits,
       imageReadings,
       timeline: [],
@@ -369,11 +291,12 @@ export function buildReport(state: OwnerState): ReportView {
   }
 
   // Classify a detached snapshot so report generation never mutates source facts.
-  state = { ...state, facts: state.facts.map(fact => ({ ...fact })) };
+  const readyIds = new Set(readable.map(document => document.id));
+  state = { ...state, facts: state.facts.filter(fact => readyIds.has(fact.documentId)).map(fact => ({ ...fact })), medications: state.medications.filter(item => readyIds.has(item.documentId)), issues: state.issues.filter(item => readyIds.has(item.documentId)) };
   classifyFacts(state);
   const clinical = analyzeClinicalState(state);
   const themes: ReportBlock[] = [];
-  const gaps: string[] = [];
+  const gaps: string[] = [...reconcileMedications(state).missing];
   for (const axis of AXES.filter((item) => item.kind === "labs")) {
     const facts = state.facts.filter((fact) => axis.concepts.includes(fact.concept));
     const requiredMet = axis.required.every((concept) => facts.some((fact) => fact.concept === concept));
@@ -415,7 +338,7 @@ export function buildReport(state: OwnerState): ReportView {
   const changeBlocks = [...trends(state), ...doseChanges(state)];
   const relationshipBlocks = buildRelationships(state);
   const axisResults = clinical.axes.map((axis) => ({ axisId: axis.axisId, title: axis.title, status: axis.status, factCount: axis.facts.length, trendCount: axis.trends.length, conflictCount: axis.conflicts.length, missingCount: axis.missing.length }));
-  const cannotSay = ["По этим документам нельзя назвать диагноз или схему лечения."];
+  const cannotSay = ["Этот разбор не подтверждает диагноз и не определяет персональную схему лечения."];
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
     cannotSay.push("По снимку нельзя назвать измерения: текст на изображении не проверен.");
   }

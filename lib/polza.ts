@@ -33,6 +33,7 @@ export async function polzaText(
   content: string | Part[],
   maxTokens: number,
   audience: "eyes" | "brain" = "brain",
+  options: { system?: string; timeoutMs?: number } = {},
 ): Promise<string> {
   const hasImage = Array.isArray(content) && content.some((part) => part.type === "image_url");
   const decision = decideProcessing({
@@ -58,9 +59,9 @@ export async function polzaText(
       model,
       temperature: 0,
       max_tokens: maxTokens,
-      messages: [{ role: "user", content }],
+      messages: [...(options.system ? [{ role: "system", content: options.system }] : []), { role: "user", content }],
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
   });
   if (!response.ok) throw new Error("polza_failed");
   const body = (await response.json()) as { choices?: { message?: { content?: unknown } }[] };
