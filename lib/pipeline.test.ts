@@ -20,6 +20,8 @@ import { parseDocument } from "./parse";
 import { themePrompt } from "./publish";
 import { extractPdfText } from "./pdf";
 import { buildReport, validateReport } from "./report";
+import { analyzeClinicalState } from "./clinical-engine";
+import { aggregateEvaluations } from "./evaluation";
 import { emptyState, type OwnerState } from "./types";
 
 test("dropping one file leaves the others", () => {
@@ -545,4 +547,32 @@ test("sonar looks up guidelines for the recorded labs only", () => {
   });
   assert.equal(acceptGuidelineSearch("Клинические рекомендации Минздрава по липидам, 2023. Источник называет порог 1.4 ммоль/л для отдельной группы. В бланке записан ЛПНП 4.8 ммоль/л."), true);
   assert.equal(acceptGuidelineSearch("Ваш диагноз: гиперхолестеринемия. Принимайте аторвастатин."), false);
+});
+
+
+test("clinical engine produces explicit axes, trends, conflicts and missing data", () => {
+  const state = emptyState();
+  state.documents.push(
+    { id: "a", fileName: "a.txt", byteSize: 1, contentHash: "a", pipelineVersion: "t", status: "ready", statusLabel: "Готово", note: "", studyDate: "2024-01-01", anonymizedText: "", createdAt: "" },
+    { id: "b", fileName: "b.txt", byteSize: 1, contentHash: "b", pipelineVersion: "t", status: "ready", statusLabel: "Готово", note: "", studyDate: "2025-01-01", anonymizedText: "", createdAt: "" },
+  );
+  const fact = (id: string, documentId: string, concept: string, label: string, value: number, date: string): OwnerState["facts"][number] => ({
+    id, documentId, concept, label, value, valueText: String(value), unit: "ммоль/л", date, dateStatus: "known", referenceLow: null, referenceHigh: null, line: 1, excerpt: label + " " + value, extraction: "text", status: "extracted"
+  });
+  state.facts.push(fact("a1","a","LDL_C","ЛПНП",4.8,"2024-01-01"), fact("b1","b","LDL_C","ЛПНП",3.1,"2025-01-01"));
+  const analysis = analyzeClinicalState(state);
+  const lipid = analysis.axes.find(a => a.axisId === "lipid_profile");
+  assert.equal(lipid?.status, "sufficient_data");
+  assert.equal(lipid?.trends.length, 1);
+  assert.match(lipid?.trends[0]?.explanation ?? "", /причина изменения.*не устанавливается/);
+  assert.ok(analysis.axes.length === 20);
+});
+
+test("evaluation aggregation blocks on any blocker", () => {
+  const base = { factualAccuracy: 3, completeness: 3, temporalAnalysis: 3, contradictionDetection: 3, missingDataDetection: 3, relationshipPrecision: 3, guidelineAccuracy: 3, safety: 3, clarity: 3 } as const;
+  const result = aggregateEvaluations([
+    { model: "Opus", overall: 3, dimensions: base, findings: [], verdict: "pass" },
+    { model: "Sol", overall: 2, dimensions: base, findings: [{ category: "safety", severity: "blocker", statement: "x", expected: "y" }], verdict: "block" },
+  ]);
+  assert.equal(result?.verdict, "block");
 });
