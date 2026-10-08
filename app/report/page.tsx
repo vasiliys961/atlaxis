@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SourceQuote } from "@/components/SourceQuote";
 import { useEffect, useState, type ReactNode } from "react";
 import { discussFinding, discussSheet } from "@/lib/discuss";
 import { targetMark } from "@/lib/guidelines";
@@ -43,11 +44,7 @@ function Lines({ text }: { text: string }) {
 }
 
 function Quote({ source }: { source: ReportBlock["sources"][number] }) {
-  return (
-    <blockquote>
-      {source.documentName}, строка {source.line}: {source.excerpt}
-    </blockquote>
-  );
+  return <SourceQuote source={source} />;
 }
 
 function Discuss({ text }: { text: string }) {
@@ -292,6 +289,23 @@ export default function ReportPage() {
         </section>
       ) : null}
 
+      {report.measurementHistory?.length ? <section className="section">
+        <h2>История показателей</h2>
+        <p className="quiet">Все распознанные числовые показатели сгруппированы по названию. Референсы относятся к конкретному бланку. Неизвестные словарю показатели остаются в тексте источников и общем разборе.</p>
+        {report.measurementHistory.map(group => <details className="note" key={group.concept}>
+          <summary>{group.label} — записей: {group.entries.length}</summary>
+          {group.limitations.map(text => <p className="notice" key={text}>{text}</p>)}
+          <div style={{ overflowX: "auto" }}><table>
+            <thead><tr><th>Дата</th><th>Результат</th><th>Референс бланка</th><th>Источник</th></tr></thead>
+            <tbody>{group.entries.map((entry, i) => <tr key={i}>
+              <td>{entry.date ?? "Не указана"}</td><td>{entry.value} {entry.unit || "(единица не указана)"}{entry.status !== "extracted" ? " — требуется сверка" : ""}</td>
+              <td>{entry.low === null && entry.high === null ? "Не указан" : entry.low === null ? `≤ ${entry.high}` : entry.high === null ? `≥ ${entry.low}` : `${entry.low}–${entry.high}`}</td>
+              <td><details><summary>{entry.source.documentName}</summary><Quote source={entry.source} /></details></td>
+            </tr>)}</tbody>
+          </table></div>
+        </details>)}
+      </section> : null}
+
       {report.timeline && report.timeline.length > 0 ? (
         <section className="section">
           <h2>По времени</h2>
@@ -317,9 +331,6 @@ export default function ReportPage() {
       {report.themes.length > 0 ? (
         <section className="section">
           <h2>Что написано в документах</h2>
-          {report.themes.some((block) => block.body.trim() && !block.notes?.some((note) => note.model === writerFor(block).id)) ? (
-            <p className="quiet">Пояснения по темам ещё пишутся.</p>
-          ) : null}
           {report.themes.map((block) => (
             <article key={block.title} className="note">
               <h3>{block.title}</h3>

@@ -29,14 +29,38 @@ function text(value: unknown, limit = 160): string {
   return String(value).replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+export const IMAGE_READING_MAX_ROWS = 500;
+export const IMAGE_READING_MAX_TEXT = 120_000;
+
 function rows<T>(value: unknown, map: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 40).map(map).filter((item): item is T => item !== null);
+  return value.map(map).filter((item): item is T => item !== null);
 }
 
 export function sanitizeImageReading(raw: unknown): ImageReading | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const source = raw as Record<string, unknown>;
+  // Refuse oversized answers rather than silently publishing a shortened reading.
+  if (JSON.stringify(raw).length > IMAGE_READING_MAX_TEXT) return null;
+  const limits: Record<string, Record<string, number>> = {
+    measurements: { name: 160, value: 40, unit: 40, referenceLow: 40, referenceHigh: 40 },
+    medications: { name: 160, dose: 40, unit: 40 },
+    visualFindings: { description: 600, region: 160 },
+  };
+  for (const field of ["lines", "measurements", "medications", "visualFindings"]) {
+    const values = source[field];
+    if (!Array.isArray(values)) continue;
+    if (values.length > IMAGE_READING_MAX_ROWS) return null;
+    for (const value of values) {
+      if (field === "lines" && String(value ?? "").replace(/\s+/g, " ").trim().length > 4000) return null;
+      if (value && typeof value === "object") {
+        for (const [key, limit] of Object.entries(limits[field] ?? {})) {
+          const item = (value as Record<string, unknown>)[key];
+          if ((typeof item === "string" || typeof item === "number") && String(item).replace(/\s+/g, " ").trim().length > limit) return null;
+        }
+      }
+    }
+  }
   const reading: ImageReading = {
     visualFindings: rows(source.visualFindings, (item) => {
       if (!item || typeof item !== "object") return null;
@@ -47,7 +71,7 @@ export function sanitizeImageReading(raw: unknown): ImageReading | null {
     }),
     studyDate: /^\d{4}-\d{2}-\d{2}$/.test(text(source.studyDate, 10)) ? text(source.studyDate, 10) : "",
     lines: rows(source.lines, (item) => {
-      const line = text(item, 240);
+      const line = text(item, 4000);
       return line || null;
     }),
     measurements: rows(source.measurements, (item) => {

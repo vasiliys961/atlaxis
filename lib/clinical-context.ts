@@ -1,7 +1,7 @@
 import { instrumentStudies } from "./instrument-studies";
 import { analyzeClinicalState } from "./clinical-engine";
 import { identityLeft } from "./anonymize";
-import { readingLines, sanitizeImageReading } from "./image-json";
+import { sourceDocumentText } from "./source-document";
 import type { OwnerState, SourceRef } from "./types";
 
 export const CONTEXT_LIMIT = 120_000;
@@ -25,9 +25,7 @@ export function buildClinicalContext(state: OwnerState, guidelineSearch?: string
     const dicom = /\.(dcm|dicom)$/i.test(document.fileName);
     if (image) {
       try {
-        const reading = sanitizeImageReading(JSON.parse(text));
-        if (!reading) throw new Error("invalid_reading");
-        text = readingLines(reading);
+        text = sourceDocumentText(document);
       } catch {
         reasons.push("Распознанный текст изображения не удалось проверить.");
         text = "";

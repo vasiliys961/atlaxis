@@ -1,0 +1,11 @@
+{
+  "provenance": "Synthetic development cases; not real patient records or independent physician validation",
+  "cases": [
+    {"id":"multi-system","text":"Дата исследования: 2025-01-01\nГемоглобин 108 г/л 120-160\nКреатинин 110 мкмоль/л 60-100\nТТГ 5.2 мМЕ/л 0.4-4.0\nСРБ 12 мг/л 0-5","expected":[{"concept":"HGB","value":108,"unit":"г/л","date":"2025-01-01","line":2,"referenceLow":120,"referenceHigh":160},{"concept":"CREAT","value":110,"unit":"мкмоль/л","date":"2025-01-01","line":3,"referenceLow":60,"referenceHigh":100},{"concept":"TSH","value":5.2,"unit":"мМЕ/л","date":"2025-01-01","line":4,"referenceLow":0.4,"referenceHigh":4},{"concept":"CRP","value":12,"unit":"мг/л","date":"2025-01-01","line":5,"referenceLow":0,"referenceHigh":5}]},
+    {"id":"decimal-and-exponent","text":"Дата исследования: 2025-02-01\nHbA1c 6,2 % 4-6\nWBC 5,8 10^9/л 4-9","expected":[{"concept":"HBA1C","value":6.2,"unit":"%","date":"2025-02-01","line":2,"referenceLow":4,"referenceHigh":6},{"concept":"WBC","value":5.8,"unit":"10^9/л","date":"2025-02-01","line":3,"referenceLow":4,"referenceHigh":9}]},
+    {"id":"invalid-date","text":"Дата исследования: 2025-01-01\nГемоглобин 140 г/л\nДата исследования: 2025-02-31\nГемоглобин 110 г/л","expected":[{"concept":"HGB","value":140,"unit":"г/л","date":"2025-01-01","line":2,"referenceLow":null,"referenceHigh":null},{"concept":"HGB","value":110,"unit":"г/л","date":null,"line":4,"referenceLow":null,"referenceHigh":null}]},
+    {"id":"censored-result","text":"Дата исследования: 2025-01-01\nСРБ <5 мг/л","expected":[],"preserved":["СРБ <5 мг/л"]},
+    {"id":"unknown-marker","text":"Дата исследования: 2025-01-01\nКальпротектин 180 мкг/г 0-50","expected":[],"preserved":["Кальпротектин 180 мкг/г 0-50"]},
+    {"id":"different-units","text":"Дата исследования: 2024-01-01\nГлюкоза 5.1 ммоль/л\nДата исследования: 2025-01-01\nГлюкоза 100 мг/дл","expected":[{"concept":"GLU","value":5.1,"unit":"ммоль/л","date":"2024-01-01","line":2,"referenceLow":null,"referenceHigh":null},{"concept":"GLU","value":100,"unit":"мг/дл","date":"2025-01-01","line":4,"referenceLow":null,"referenceHigh":null}]}
+  ]
+}

@@ -1,4 +1,5 @@
 import { instrumentStudies } from "./instrument-studies";
+import { measurementHistory } from "./measurement-history";
 import { createHash } from "crypto";
 import { identityLeft } from "./anonymize";
 import { AXES } from "./catalog";
@@ -383,6 +384,7 @@ export function buildReport(state: OwnerState): ReportView {
     instrumentStudies: instrumentStudies(state),
     timeline: buildTimeline(state),
     axisResults,
+    measurementHistory: measurementHistory(state),
   };
   return validateReport(report, state);
 }
