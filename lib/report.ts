@@ -15,8 +15,7 @@ export function buildRelationships(state: OwnerState): ReportBlock[] {
     ...clinical.relations.map((relation) => ({
       title:
         relation.type === "trend" ? "Динамика" :
-        relation.type === "same_measurement_different_document" ? "Расхождение записей" :
-        relation.type === "temporal" ? "Временная близость" : "Связь",
+        relation.type === "same_measurement_different_document" ? "Расхождение записей" : "Связь",
       body: relation.explanation,
       sources: relation.sourceRefs,
     })),
