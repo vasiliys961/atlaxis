@@ -1,5 +1,5 @@
 import { guidelineSentence } from "./guidelines";
-import { RU_NOT_FOUND, SEARCH_SCOPE, searchGuidelines, sonarFoundRussian } from "./guidelines-search";
+import { RU_NOT_FOUND, SEARCH_SCOPE, settleSearch, searchGuidelines, sonarFoundRussian } from "./guidelines-search";
 import { OPUS } from "./models";
 import { writerFor } from "./router";
 import { newId } from "./parse";
@@ -10,11 +10,11 @@ import { acceptWording } from "./wording";
 import { synthesizeClinicalState, type ClinicalSynthesis } from "./clinical-synthesis";
 
 function reusableSynthesis(saved?: ClinicalSynthesis): boolean {
-  return Boolean(saved?.version === "2" && (saved.status !== "unavailable" || Date.now() - Date.parse(saved.attemptedAt) < 5 * 60_000));
+  return Boolean(saved?.version === "3" && (saved.status !== "unavailable" || Date.now() - Date.parse(saved.attemptedAt) < 5 * 60_000));
 }
 
 export function themePrompt(title: string, packet: string): string {
-  return `Это одна тема уже собранного разбора, не весь комплект. Перескажи только её одним законченным абзацем. Не связывай с другими темами. Не ставь диагноз, не назначай лечение и не добавляй чисел.\n\nТема: ${title}\n${packet}`;
+  return `Это одна тема уже собранного разбора, не весь комплект. Перескажи только её одним законченным абзацем. Не связывай с другими темами. Не ставь новый или предположительный диагноз, не формируй лечебный план, не назначай лечение и не добавляй чисел.\n\nТема: ${title}\n${packet}`;
 }
 
 const THEMES_PER_PASS = 2;
@@ -85,7 +85,7 @@ export async function publishReport(state: OwnerState): Promise<ReportView> {
     canAsk ? narrateThemes(report, state) : Promise.resolve(),
   ]);
   if (guidelineSearch) report.guidelineSearch = guidelineSearch;
-  if (report.region === "RU" && canAsk && !report.guidelineSearch) report.guidelineSearch = RU_NOT_FOUND;
+  if (canAsk && !report.guidelineSearch) report.guidelineSearch = settleSearch(report.region === "RU" ? RU_NOT_FOUND : "Поиск источников недоступен.", report.region);
   if (same && reusableSynthesis(previous?.clinicalSynthesis)) report.clinicalSynthesis = previous!.clinicalSynthesis;
   else if (canAsk) report.clinicalSynthesis = await synthesizeClinicalState(state, undefined, report.guidelineSearch);
   report.guidelineNote = guidelineSentence(report.region, report.guidelineSearch);

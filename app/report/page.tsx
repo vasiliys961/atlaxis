@@ -20,13 +20,16 @@ function plain(text: string): string {
 
 function SearchNote({ text }: { text?: string }) {
   if (!text) return null;
-  return (
-    <article className="note">
-      <h3>Что нашлось в опубликованных рекомендациях</h3>
-      <p>{plain(text)}</p>
-      <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
-    </article>
-  );
+  const marker = "\n\nПроверка доступа к первичным страницам";
+  const body = text.split(marker)[0];
+  let sources: {url:string;region:string;status:string}[] = [];
+  try { const data = text.split(marker)[1]?.split("\n")[1]; if (data) sources = JSON.parse(data); } catch {}
+  return <article className="note">
+    <h3>Справочная основа: клинические рекомендации</h3>
+    <p>{plain(body)}</p>
+    {sources.map(source => <p key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.region}: первичная страница</a> — {source.status === "retrieved" ? "получен фрагмент текста" : "текст страницы не получен"}.</p>)}
+    <p className="quiet">Проверяется доступ максимум к трём первичным страницам. Доступ не подтверждает актуальность редакции, весь документ или применимость к человеку. Поисковые сведения требуют проверки. Научная статья не заменяет клиническую рекомендацию.</p>
+  </article>;
 }
 
 function Lines({ text }: { text: string }) {
@@ -232,20 +235,16 @@ export default function ReportPage() {
           <p className="quiet">{report.modelsReady ? "Общий разбор всех документов ещё готовится." : "Для комплексной интерпретации нужен подключённый медицинский ИИ. Записи из документов доступны ниже."}</p>
         ) : (
           <>
-            <p className="quiet">{report.clinicalSynthesis.message}</p>
-            {report.clinicalSynthesis.status === "ready" ? (
+            <p className="quiet">{report.clinicalSynthesis.version === "3" ? report.clinicalSynthesis.message : "Предыдущая интерпретация скрыта: требуется обновление в справочном формате."}</p>
+            {report.clinicalSynthesis.version === "3" && report.clinicalSynthesis.status === "ready" ? (
               <>
                 {report.clinicalSynthesis.overview ? <article className="note"><h3>{report.clinicalSynthesis.overview.title}</h3><Statements block={{ title: report.clinicalSynthesis.overview.title, body: report.clinicalSynthesis.overview.text, sources: report.clinicalSynthesis.overview.sources }} /></article> : null}
-                {report.clinicalSynthesis.hypotheses.length > 0 ? <h3>Диагнозы из документов и возможные объяснения</h3> : null}
-                {report.clinicalSynthesis.hypotheses.map((item, index) => (
-                  <article className="note" key={`hypothesis-${index}`}>
-                    <h4>{item.kind === "documented" ? "Указано в документе: " : "Диагностическая версия: "}{item.title}</h4>
-                    <Statements block={{ title: item.title, body: item.text, lead: item.kind === "possible" ? "Это предположение для обсуждения с врачом, требующее проверки." : "Это запись в исходном документе; её актуальность оценивает врач.", sources: item.sources }} />
-                    {item.missing.map((text, i) => <p className="quiet" key={i}>Для уточнения: {text}</p>)}
-                  </article>
-                ))}
-                {report.clinicalSynthesis.treatmentDirections.length > 0 ? <h3>Направления лечения для обсуждения</h3> : null}
-                {report.clinicalSynthesis.treatmentDirections.map((item, index) => <article className="note" key={`treatment-${index}`}><h4>{item.title}</h4><Statements block={{ title: item.title, body: item.text, sources: item.sources }} /></article>)}
+                {report.clinicalSynthesis.documentedRecords.length ? <h3>Что записано в документах</h3> : null}
+                {report.clinicalSynthesis.documentedRecords.map((item, i) => <article className="note" key={`record-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,lead:"Запись автора документа; её актуальность оценивает врач.",sources:item.sources}} /></article>)}
+                {report.clinicalSynthesis.explanations.length ? <h3>Как понимать изменения</h3> : null}
+                {report.clinicalSynthesis.explanations.map((item, i) => <article className="note" key={`explanation-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,sources:item.sources}} />{item.missing.map((text, n) => <p className="quiet" key={n}>Для понимания: {text}</p>)}</article>)}
+                {report.clinicalSynthesis.discussionPoints.length ? <h3>Что обсудить с врачом</h3> : null}
+                {report.clinicalSynthesis.discussionPoints.map((item, i) => <article className="note" key={`question-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,sources:item.sources}} /></article>)}
                 {report.clinicalSynthesis.practicalAdvice.length > 0 ? <h3>Практические аспекты</h3> : null}
                 {report.clinicalSynthesis.practicalAdvice.map((item, index) => <article className="note" key={`advice-${index}`}><h4>{item.title}</h4><Statements block={{ title: item.title, body: item.text, sources: item.sources }} /></article>)}
                 {report.clinicalSynthesis.missingContext.length > 0 ? <details><summary>Каких сведений не хватает для общего вывода</summary>{report.clinicalSynthesis.missingContext.map((text, index) => <p key={index}>{text}</p>)}</details> : null}
@@ -256,13 +255,16 @@ export default function ReportPage() {
       </section>
 
       {report.instrumentStudies?.length ? <section className="section">
-        <h2>Напечатанные параметры ЭКГ и спирометрии</h2>
+        <h2>ЭКГ и спирометрия в комплекте</h2>
+        <p className="quiet">Записи учитываются в общем разборе. Подробные параметры доступны для сверки с оригиналом.</p>
         {report.instrumentStudies.map(study => <article className="note" key={`${study.documentId}-${study.kind}`}>
           <h3>{study.kind === "ecg" ? "ЭКГ" : "Спирометрия"}: {study.documentName}</h3>
+          <details><summary>Показать напечатанные параметры и источники</summary>
           {study.parameters.map((parameter, index) => <div key={index}>
             <p>{parameter.name}: {parameter.status === "printed" ? `${parameter.valueText} ${parameter.unit}` : "значение или столбец не определены однозначно"}.</p>
             <p className="quiet">{parameter.context}. Строка {parameter.source.line}: {parameter.source.excerpt}</p>
           </div>)}
+          </details>
           {study.recordedConclusions.map(source => <p key={source.line}>Запись в документе, не вывод сервиса: {source.excerpt}</p>)}
           {study.limitations.map((text, i) => <p className="quiet" key={i}>{text}</p>)}
         </article>)}

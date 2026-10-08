@@ -14,14 +14,15 @@ function stateWith(text: string): OwnerState {
 }
 function candidate() {
   return {
+    documentedRecords: [] as {title:string;text:string;evidence:string[]}[],
     overview: { title: "Общий контекст", text: "В выписке есть жалобы и сведения об обследовании, требующие совместного рассмотрения.", evidence: ["d:1", "d:2"] },
-    hypotheses: [{ title: "Версия для уточнения", text: "Причины описанных изменений нуждаются в уточнении.", evidence: ["d:2"], kind: "possible", missing: ["Динамика жалоб"] }],
-    treatmentDirections: [{ title: "Обсуждение лечения", text: "Врач может обсудить направления терапии с учётом жалоб и противопоказаний.", evidence: ["d:1"] }],
+    explanations: [{ title: "Версия для уточнения", text: "Причины описанных изменений нуждаются в уточнении.", evidence: ["d:2"], missing: ["Динамика жалоб"] }],
+    discussionPoints: [{ title: "Вопрос о документах", text: "Какие прежние заключения помогут уточнить изменения?", evidence: ["d:1"] }],
     practicalAdvice: [{ title: "Подготовка к приёму", text: "Полезно сопоставить жалобы с прежними заключениями вместе с врачом.", evidence: ["d:1", "d:2"] }],
     missingContext: ["Нет сведений о переносимости лечения"],
   };
 }
-const pass = { verdict: "pass", grounded: true, patientSafe: true, contextComplete: true, crossSystemAssessment: true, findings: [] };
+const pass = { verdict: "pass", grounded: true, patientSafe: true, contextComplete: true, crossSystemAssessment: true, noNewDiagnosis: true, noTreatmentPlan: true, findings: [] };
 const text = "Жалобы: утомляемость\nMCV 74 фл\nЛПНП 3.1 ммоль/л\nОписанное в выписке состояние";
 
 test("complete context includes complaints and markers outside the original dictionary", () => {
@@ -77,17 +78,17 @@ test("embedded instructions are omitted while source line numbering is preserved
   assert.equal(context.sources.get("d:3")?.excerpt, "MCV 74 фл");
 });
 
-test("new diagnostic hypotheses require real source IDs", () => {
+test("new diagnostic explanations require real source IDs", () => {
   const context = buildClinicalContext(stateWith(text));
   const valid = candidate();
   assert.ok(validateClinicalCandidate(valid, context));
-  valid.hypotheses[0]!.evidence = ["nonexistent:1"];
+  valid.explanations[0]!.evidence = ["nonexistent:1"];
   assert.equal(validateClinicalCandidate(valid, context), null);
 });
 
 test("documented diagnosis cannot be fabricated by changing the hypothesis label", () => {
   const c = candidate();
-  c.hypotheses[0]!.kind = "documented";
+  c.documentedRecords = [{title:"Несуществующий диагноз",text:"Запись документа.",evidence:["d:1"]}];
   assert.equal(validateClinicalCandidate(c, buildClinicalContext(stateWith(text))), null);
 });
 
@@ -107,14 +108,14 @@ test("independent reviewer sees complete context and candidate before publicatio
     if (requests.length === 1) return JSON.stringify(candidate());
     const packet = JSON.parse(prompt);
     assert.match(JSON.stringify(packet.context), /MCV 74/);
-    assert.equal(packet.candidate.hypotheses[0].kind, "possible");
+    assert.equal(packet.candidate.explanations[0].missing[0], "Динамика жалоб");
     return JSON.stringify(pass);
   };
   const result = await synthesizeClinicalState(stateWith(text), call);
   assert.equal(result.status, "ready");
   assert.equal(requests.length, 2);
   assert.notEqual(requests[0], requests[1]);
-  assert.equal(result.hypotheses[0]?.kind, "possible");
+  assert.equal(result.explanations[0]?.missing[0], "Динамика жалоб");
   assert.equal(result.overview?.sources[1]?.line, 2);
 });
 
@@ -124,8 +125,8 @@ test("reviewer rejection withholds all diagnostic and treatment content", async 
     const result = await synthesizeClinicalState(stateWith(text), async () => JSON.stringify(++calls === 1 ? candidate() : review));
     assert.equal(result.status, "review_required");
     assert.equal(result.overview, undefined);
-    assert.deepEqual(result.hypotheses, []);
-    assert.deepEqual(result.treatmentDirections, []);
+    assert.deepEqual(result.explanations, []);
+    assert.deepEqual(result.discussionPoints, []);
     assert.deepEqual(result.practicalAdvice, []);
   }
 });
@@ -137,7 +138,7 @@ test("failed reviewer cannot expose an unreviewed draft", async () => {
     throw new Error("provider_timeout");
   });
   assert.equal(result.status, "unavailable");
-  assert.equal(result.hypotheses.length, 0);
+  assert.equal(result.explanations.length, 0);
 });
 
 test("publishing without model keys preserves the deterministic report", async () => {
@@ -244,8 +245,23 @@ test("pixel observations are evidence, never a documented diagnosis", () => {
   const packet = JSON.parse(context.packet);
   assert.equal(packet.documents[0].pixelAnalysis.coverage, "sampled");
   const c = candidate();
-  c.hypotheses[0] = { title: "Визуальная версия", text: "Наблюдение требует подтверждения.", evidence: ["d:visual:1"], kind: "possible", missing: [] };
+  c.explanations[0] = { title: "Визуальная версия", text: "Наблюдение требует подтверждения.", evidence: ["d:visual:1"], missing: [] };
   assert.ok(validateClinicalCandidate(c, context));
-  c.hypotheses[0].kind = "documented";
+  c.documentedRecords = [{title:"Визуальная версия",text:"Запись документа.",evidence:["d:visual:1"]}];
   assert.equal(validateClinicalCandidate(c, context), null);
+});
+
+
+test("reviewer must explicitly approve absence of new diagnosis and personal treatment plan", async () => {
+  for (const review of [{...pass,noNewDiagnosis:false},{...pass,noTreatmentPlan:false}]) {
+    let calls = 0;
+    const result = await synthesizeClinicalState(stateWith(text), async () => JSON.stringify(++calls === 1 ? candidate() : review));
+    assert.equal(result.status,"review_required"); assert.deepEqual(result.explanations,[]);
+  }
+});
+
+test("legacy diagnostic-treatment schema cannot be published", () => {
+  const c = candidate();
+  const old = {...c, hypotheses: c.explanations, treatmentDirections: c.discussionPoints};
+  assert.equal(validateClinicalCandidate(old,buildClinicalContext(stateWith(text))),null);
 });

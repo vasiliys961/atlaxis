@@ -71,7 +71,7 @@ test("a theme is retold on its own and not as the whole chart", () => {
   assert.match(prompt, /не весь комплект/);
   assert.match(prompt, /только её/);
   assert.match(prompt, /Кровь/);
-  assert.match(prompt, /Не ставь диагноз/);
+  assert.match(prompt, /Не ставь новый или предположительный диагноз/);
   assert.doesNotMatch(prompt, /ЛПНП/);
 });
 
@@ -473,14 +473,14 @@ test("a finding becomes a professor question without a diagnosis request", () =>
   const sheet = sheetQuestion();
   assert.match(sheet, /весь комплект/);
   assert.match(sheetBrief(sheet), /весь комплект/);
-  assert.match(sheetBrief(sheet), /проверенные диагностические версии/);
+  assert.match(sheetBrief(sheet), /проверенные объяснения/);
   assert.equal(sheetBrief(findingQuestion("гемоглобин 108 г/л")), "");
   assert.equal(findingBrief(sheet), "");
 });
 
 test("chat explains findings and drops diagnosis or treatment", () => {
-  assert.match(EXPLAIN_SYSTEM, /Когда сравниваешь сведения с рекомендациями/);
-  assert.match(EXPLAIN_SYSTEM, /только на самые последние данные/);
+  assert.match(EXPLAIN_SYSTEM, /Разделяй референс бланка/);
+  assert.match(EXPLAIN_SYSTEM, /не доказывает актуальность редакции/);
   assert.match(EXPLAIN_SYSTEM, /Не ставь диагноз/);
   assert.match(EXPLAIN_SYSTEM, /Не назначай и не отменяй лечение/);
   const state = emptyState();
@@ -508,17 +508,17 @@ test("chat explains findings and drops diagnosis or treatment", () => {
 test("sonar looks up guidelines for the recorded labs only", () => {
   const prompt = guidelineSearchPrompt("RU", "ЛПНП: 4.8 ммоль/л, 2024-03-12");
   assert.match(prompt, /Минздрава России/);
-  assert.match(prompt, /не только для этого комплекта/);
-  assert.match(prompt, /Когда сравниваешь уже записанные значения с рекомендациями/);
-  assert.match(prompt, /только самые последние опубликованные данные/);
+  assert.match(prompt, /проверкой последующих обновлений/);
+  assert.match(prompt, /Ищи действующие редакции/);
+  assert.match(prompt, /Отсутствие свежего результата/);
   assert.match(prompt, /Не ограничивайся дислипидемией/);
-  assert.match(prompt, /Не ставь диагноз/);
+  assert.match(prompt, /Не ставь новый или предположительный диагноз/);
   assert.match(prompt, /Не назначай и не отменяй лечение/);
   assert.match(prompt, /Российскую рекомендацию поиск не нашёл/);
   const found = "Клинические рекомендации Минздрава России по нарушениям липидного обмена, 2023.";
   assert.equal(sonarFoundRussian(found), true);
   assert.equal(sonarFoundRussian(RU_NOT_FOUND), false);
-  assert.match(guidelineSentence("RU", found), /Поиск нашёл опубликованную российскую/);
+  assert.match(guidelineSentence("RU", found), /Поисковый ответ упоминает российскую/);
   assert.match(guidelineSentence("RU", RU_NOT_FOUND), /Поиск не нашёл российскую рекомендацию/);
   assert.match(guidelineSentence("RU", RU_NOT_FOUND), /США и Европы/);
   assert.match(guidelineSentence("RU"), /Разбор ищет/);

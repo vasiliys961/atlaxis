@@ -12,7 +12,7 @@ test("general chat uses extracted search terms and abstracts without document hi
     requests.push(String(url) + (options?.body ?? ""));
     if (String(url).includes("europepmc")) return Response.json({ resultList: { result: [{ pmid: "123", title: "Ferritin study", pubYear: "2025", abstractText: "<p>Ferritin reflects iron stores and inflammation.</p>" }] } });
     const body = JSON.parse(options.body);
-    return Response.json({ choices: [{ message: { content: body.max_tokens === 120 ? "ferritin inflammation" : "Ферритин отражает запасы железа и воспаление. PMID: 123." } }] });
+    return Response.json({ choices: [{ message: { content: body.max_tokens === 350 ? JSON.stringify({grounded:true,noNewDiagnosis:true,noTreatmentPlan:true}) : body.max_tokens === 120 ? "ferritin inflammation" : "Ферритин отражает запасы железа и воспаление. PMID: 123." } }] });
   }) as typeof fetch;
   try {
     const state = emptyState();
