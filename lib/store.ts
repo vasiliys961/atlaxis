@@ -20,7 +20,7 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
     let state = emptyState();
     try {
       const raw = await readText(stateKey);
-      if (!raw) throw new Error("empty");
+      if (!raw) throw new Error("owner_state_unavailable");
       const saved = JSON.parse(raw) as Partial<OwnerState>;
       state = { ...emptyState(), ...saved };
       state.documents ??= [];
@@ -35,8 +35,9 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
       }
       state.audit ??= [];
       state.chat ??= [];
-    } catch {
-      state = emptyState();
+    } catch (error) {
+      // A failed read or invalid JSON must never be overwritten with an empty patient history.
+      throw error instanceof Error ? error : new Error("owner_state_unavailable");
     }
     const result = await task(state, dir);
     await writeText(stateKey, JSON.stringify(state));
