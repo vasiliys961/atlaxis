@@ -250,9 +250,11 @@ export function parseDocument(text: string): ParsedDocument {
 
   const byConcept = new Map<string, typeof facts>();
   for (const fact of facts) {
-    const list = byConcept.get(fact.concept) ?? [];
+    // Different study dates are a longitudinal series, not a contradiction.
+    const key = `${fact.concept}|${fact.date ?? "undated"}`;
+    const list = byConcept.get(key) ?? [];
     list.push(fact);
-    byConcept.set(fact.concept, list);
+    byConcept.set(key, list);
   }
   for (const list of byConcept.values()) {
     const first = list[0];
