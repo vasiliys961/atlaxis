@@ -156,7 +156,7 @@ test("blank contradiction, dose split and trend", () => {
 
   const report = buildReport(state);
   assert.equal(report.status, "ready");
-  assert.match(report.changes.map((item) => item.body).join("\n"), /смена записи во времени/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /причина изменения по этим данным не устанавливается/);
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /референс этого же бланка/);
   assert.match(report.questions.join("\n"), /Вопрос врачу: .+референс этого же бланка/);
   const blood = report.themes.find((item) => item.title === "Кровь");
