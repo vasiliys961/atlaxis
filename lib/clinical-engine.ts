@@ -27,9 +27,12 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
       for (const [date, sameDate] of byDate) {
         const distinct = new Set(sameDate.map(f => `${f.value}|${f.unit.trim().toLowerCase()}`));
         const comparableUnits = new Set(sameDate.map(f => f.unit.trim().toLowerCase()));
-        if (distinct.size > 1 && comparableUnits.size === 1 && !comparableUnits.has("")) {
+        if (distinct.size > 1) {
           const refs = sameDate.map(f => source(state, f));
-          const explanation = `В записях показателя ${sameDate[0].label} на ${date} есть расхождение. Уточните первичный бланк.`;
+          const unitsComparable = comparableUnits.size === 1 && !comparableUnits.has("");
+          const explanation = unitsComparable
+            ? `В записях показателя ${sameDate[0].label} на ${date} есть расхождение. Уточните первичный бланк.`
+            : `Для показателя ${sameDate[0].label} на ${date} указаны разные или отсутствующие единицы измерения. Числа нельзя непосредственно сопоставлять; проверьте первичные бланки.`;
           conflicts.push({ explanation, sourceRefs: refs });
           if (new Set(sameDate.map(f => f.documentId)).size > 1) relations.push({ type: "same_measurement_different_document", explanation, sourceRefs: refs });
         }
