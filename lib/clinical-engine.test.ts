@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeClinicalState } from "./clinical-engine";
+import { buildReport } from "./report";
 import { aggregateEvaluations } from "./evaluation";
 import { emptyState, type MedicalFact, type OwnerState } from "./types";
 
@@ -43,4 +44,11 @@ test("invalid independent evaluation is blocked", () => {
   const dimensions = { factualAccuracy: 5, completeness: 5, temporalAnalysis: 5, contradictionDetection: 5, missingDataDetection: 5, relationshipPrecision: 5, guidelineAccuracy: 5, safety: 5, clarity: 5 };
   const summary = aggregateEvaluations([{model:"test",overall:Number.NaN,dimensions,findings:[],verdict:"pass"}]);
   assert.equal(summary?.verdict,"block");
+});
+
+test("patient report does not claim a trend across incompatible units", () => {
+  const state = sample();
+  state.facts.push(fact("f1","a","2024-01-01",4.8),fact("f2","b","2025-01-01",180,"мг/дл"));
+  const report = buildReport(state);
+  assert.equal(report.changes.some(block => block.title === "ЛПНП"), false);
 });
