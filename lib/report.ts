@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { identityLeft } from "./anonymize";
 import { AXES } from "./catalog";
+import { analyzeClinicalState } from "./clinical-engine";
 import { catalogEntries, guidelineSentence, guidelinesFor } from "./guidelines";
 import { PIPELINE_VERSION, type MedicalFact, type MedicationMention, type OwnerState, type ReportBlock, type ReportView, type SourceRef, type TimelineEvent } from "./types";
 
@@ -38,7 +39,18 @@ function imagePeriodLinks(state: OwnerState): ReportBlock[] {
 }
 
 export function buildRelationships(state: OwnerState): ReportBlock[] {
-  return [...periodLinks(state), ...imagePeriodLinks(state)];
+  const clinical = analyzeClinicalState(state);
+  return [
+    ...clinical.relations.map((relation) => ({
+      title:
+        relation.type === "trend" ? "Динамика" :
+        relation.type === "same_measurement_different_document" ? "Расхождение записей" :
+        relation.type === "temporal" ? "Временная близость" : "Связь",
+      body: relation.explanation,
+      sources: relation.sourceRefs,
+    })),
+    ...imagePeriodLinks(state),
+  ];
 }
 
 function periodLinks(state: OwnerState): ReportBlock[] {
@@ -429,6 +441,7 @@ export function buildReport(state: OwnerState): ReportView {
   }
 
   classifyFacts(state);
+  const clinical = analyzeClinicalState(state);
   const themes: ReportBlock[] = [];
   const gaps: string[] = [];
   for (const axis of AXES.filter((item) => item.kind === "labs")) {
@@ -471,6 +484,7 @@ export function buildReport(state: OwnerState): ReportView {
   const conflictBlocks = conflicts(state);
   const changeBlocks = [...trends(state), ...doseChanges(state)];
   const relationshipBlocks = buildRelationships(state);
+  const axisResults = clinical.axes.map((axis) => ({ axisId: axis.axisId, title: axis.title, status: axis.status, factCount: axis.facts.length, trendCount: axis.trends.length, conflictCount: axis.conflicts.length, missingCount: axis.missing.length }));
   const cannotSay = ["По этим документам нельзя назвать диагноз или схему лечения."];
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
     cannotSay.push("По снимку нельзя назвать измерения: текст на изображении не проверен.");
@@ -509,6 +523,7 @@ export function buildReport(state: OwnerState): ReportView {
     limits,
     imageReadings,
     timeline: buildTimeline(state),
+    axisResults,
   };
   return validateReport(report, state);
 }
