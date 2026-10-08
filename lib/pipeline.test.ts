@@ -380,11 +380,7 @@ test("a read image stays beside the same-month blank and adds no measurement", (
   const before = state.facts.length;
   const report = buildReport(state);
   assert.equal(state.facts.length, before);
-  assert.match(report.relationships.map((item) => item.body).join("\n"), /на снимке «scan.png»/);
-  assert.match(report.relationships.map((item) => item.body).join("\n"), /Оба числа уже были/);
-  assert.match(report.relationships.map((item) => item.body).join("\n"), /Ясной связи/);
-  assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал|диагноз\s*:/);
-  assert.equal(report.relationships[0]?.sources.length, 2);
+  assert.equal(report.relationships.length, 0, "Unrelated facts from the same month must not be linked");
 });
 
 test("invented dose blocks the report", () => {
