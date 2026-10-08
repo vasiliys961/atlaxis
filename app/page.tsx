@@ -265,7 +265,7 @@ export default function DocumentsPage() {
 
       {ready && report && report.status !== "empty" ? (
         <Link className="bridge" href="/report">
-          <span>Разбор собран</span>
+          <span>{report.clinicalSynthesis?.status === "ready" ? "Разбор готов" : "Результаты обработки документов"}</span>
           <strong>{report.headline}</strong>
           <span className="quiet">Открыть текст для чтения</span>
         </Link>

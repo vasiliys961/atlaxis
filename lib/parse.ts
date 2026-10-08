@@ -25,6 +25,8 @@ const CONCEPTS: { id: string; label: string; pattern: RegExp }[] = [
   { id: "URIC", label: "мочевая кислота", pattern: /(?<![\p{L}])(?:мочевая кислота|uric acid|urate)(?![\p{L}])/iu },
   { id: "AMYLASE", label: "амилаза", pattern: /(?<![\p{L}])(?:амилаз[\p{L}]*|amylase)(?![\p{L}])/iu },
   { id: "VITD", label: "витамин D", pattern: /(?<![\p{L}])(?:витамин\s*[dд]|25-oh)(?![\p{L}])/iu },
+  { id: "ZN", label: "цинк", pattern: /(?<![\p{L}])(?:цинк|zinc|zn)(?![\p{L}])/iu },
+  { id: "ESR", label: "СОЭ", pattern: /(?<![\p{L}])(?:соэ|esr)(?![\p{L}])/iu },
   { id: "INR", label: "МНО", pattern: /(?<![\p{L}])(?:мно|inr)(?![\p{L}])/iu },
   { id: "NA", label: "натрий", pattern: /(?<![\p{L}])(?:натрий|sodium)(?![\p{L}])/iu },
   { id: "K", label: "калий", pattern: /(?<![\p{L}])(?:калий|potassium)(?![\p{L}])/iu },
@@ -66,7 +68,7 @@ function measurementFrom(line: string, pattern: RegExp): { valueText: string; un
   if (!marker || marker.index == null) return null;
   // Read the result immediately after the marker. Digits in HbA1c, 10^9/l
   // or ml/min/1.73m2 must never become the measured value.
-  const tail = line.slice(marker.index + marker[0].length).trim().replace(/^[:=]\s*/, "");
+  const tail = line.slice(marker.index + marker[0].length).trim().replace(/^\([A-Za-zА-Яа-я0-9 -]{1,16}\)\s*/, "").replace(/^[:=]\s*/, "");
   const result = tail.match(/^(-?\d+(?:[.,]\d+)?)(.*)$/u);
   if (!result?.[1]) return null;
   const rest = (result[2] ?? "").trim();

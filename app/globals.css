@@ -24,7 +24,14 @@
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; min-height: 100vh; line-height: 1.5; overflow-x: hidden; }
+body {
+  /* next/font variables live on body, not :root. Resolve font aliases here. */
+  --sans: var(--font-sans, system-ui), sans-serif;
+  --serif: var(--font-serif, Georgia), serif;
+  --mono: var(--font-mono, ui-monospace), monospace;
+  margin: 0; min-height: 100vh; line-height: 1.6; overflow-x: hidden;
+  font-family: var(--sans); background: #f2f6f3;
+}
 a { color: inherit; }
 button, .button { font: inherit; cursor: pointer; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 12px; }
@@ -186,3 +193,27 @@ body:has(.professor) .site-footer { width: min(1080px, calc(100% - 460px)); marg
 .video-pages { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 12px; max-height: 520px; overflow: auto; }
 .video-page img { width: 100%; max-height: 220px; object-fit: contain; background: #eee; }
 .video-page span { display: block; font-size: 12px; }
+
+/* Calm document workspace: keep the green identity, prioritise readable records. */
+.scene, .motes { display: none; }
+.top { background: #f8fbf9; border-bottom: 1px solid #dce6df; backdrop-filter: none; }
+.sheet { background: #fff; border: 1px solid #dce6df; border-radius: 20px; box-shadow: 0 4px 18px #173e2410; }
+.sheet .section { margin-top: 22px; padding: 20px 0 0; border: 0; border-top: 1px solid #e4ebe6; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+.sheet h1 { font-size: clamp(30px, 3vw, 44px); line-height: 1.15; }
+.sheet .section h2 { font-family: var(--sans); font-size: 22px; font-weight: 650; }
+.sheet p { max-width: 80ch; overflow-wrap: anywhere; }
+.sheet .note, .sheet .file-chip, .sheet .question { border-radius: 10px; padding: 12px 14px; }
+.bridge { display: grid; gap: 8px; background: #fff; border-color: #dce6df; }
+.professor { background: #fff; border-color: #dce6df; border-radius: 18px; box-shadow: 0 6px 24px #173e2418; }
+.professor header { grid-template-columns: auto 1fr; }
+.professor-actions { grid-column: 1 / -1; }
+.professor-actions button { padding: 6px 10px; font-size: 12px; box-shadow: none; }
+.professor h2 { font-size: 24px; }
+.professor-modes button { padding: 10px 8px; box-shadow: none; }
+.chat-answer { background: #f3f7f4; line-height: 1.65; }
+.professor.collapsed header { display: flex; }
+.professor.collapsed .professor-actions { grid-column: auto; }
+body:has(.professor.collapsed) main, body:has(.professor.collapsed) .site-footer { width: min(1160px, calc(100% - 40px)); margin-left: auto; margin-right: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; text-align: left; }
+th, td { padding: 10px; border-bottom: 1px solid #e4ebe6; vertical-align: top; }
+th { background: #f3f7f4; }

@@ -1,5 +1,6 @@
 import { instrumentStudies } from "./instrument-studies";
 import { measurementHistory } from "./measurement-history";
+import { extractionIssue } from "./document-issues";
 import { createHash } from "crypto";
 import { identityLeft } from "./anonymize";
 import { AXES } from "./catalog";
@@ -186,6 +187,7 @@ function doseChanges(state: OwnerState): ReportBlock[] {
 function conflicts(state: OwnerState): ReportBlock[] {
   const blocks: ReportBlock[] = [];
   for (const issue of state.issues) {
+    if (extractionIssue(issue)) continue;
     const document = state.documents.find((item) => item.id === issue.documentId);
     blocks.push({
       title: "Запись внутри документа",
@@ -252,10 +254,10 @@ export function buildReport(state: OwnerState): ReportView {
     .digest("hex");
 
   const limits = [
-    "Разбор объясняет медицинские документы, возможные причины изменений и направления лечения для обсуждения с врачом. Он не подтверждает диагноз и не назначает персональную схему лечения.",
+    "Разбор объясняет записи и изменения в медицинских документах и помогает подготовить вопросы врачу. Он не подтверждает диагноз и не назначает персональную схему лечения.",
   ];
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
-    limits.push("Снимки и DICOM сохранены отдельно. Текст на самом изображении здесь не проверяется, поэтому измерения с них не читаются.");
+    limits.push("Часть файлов не прошла извлечение или проверку. Их данные не включены в общий разбор; подробности указаны у каждого файла.");
   }
 
   const imagingStudies = state.documents.filter(document => document.visualAnalysis).map(document => ({ documentId: document.id, documentName: document.fileName, status: document.visualAnalysis!.status, totalFrames: document.visualAnalysis!.totalFrames, analyzedFrames: document.visualAnalysis!.analyzedFrames, coverage: document.visualAnalysis!.coverage, limitations: document.visualAnalysis!.limitations }));
@@ -340,6 +342,12 @@ export function buildReport(state: OwnerState): ReportView {
   }
 
   const conflictBlocks = conflicts(state);
+  const extractionProblems: ReportBlock[] = readable.flatMap(document => {
+    const issues = state.issues.filter(issue => issue.documentId === document.id && extractionIssue(issue));
+    if (!issues.length) return [];
+    return [{ title: document.fileName, body: `Не удалось однозначно извлечь часть результатов (${issues.length} строк). Это ограничение распознавания, а не противоречие медицинских записей.`, sources: issues.map(issue => ({documentId:document.id,documentName:document.fileName,line:issue.line,excerpt:issue.excerpt})) }];
+  });
+  if (!state.facts.length && extractionProblems.length) gaps.splice(0, gaps.length, "Показатели не извлечены надёжно. Их отсутствие в структурированном списке не означает отсутствия в документах.");
   const changeBlocks = [...trends(state), ...doseChanges(state)];
   const relationshipBlocks = buildRelationships(state);
   const axisResults = clinical.axes.map((axis) => ({ axisId: axis.axisId, title: axis.title, status: axis.status, factCount: axis.facts.length, trendCount: axis.trends.length, conflictCount: axis.conflicts.length, missingCount: axis.missing.length }));
@@ -347,7 +355,7 @@ export function buildReport(state: OwnerState): ReportView {
   if (state.documents.some((item) => item.status === "anonymization_unconfirmed")) {
     cannotSay.push("По снимку нельзя назвать измерения: текст на изображении не проверен.");
   }
-  const questions = physicianQuestions(conflictBlocks, gaps);
+  const questions = physicianQuestions(conflictBlocks, !state.facts.length && extractionProblems.length ? [] : gaps);
 
   const parts = [
     `Прочитано ${plural(state.facts.length, "измерение", "измерения", "измерений")} из ${plural(readable.length, "документа", "документов", "документов")}.`,
@@ -385,6 +393,7 @@ export function buildReport(state: OwnerState): ReportView {
     timeline: buildTimeline(state),
     axisResults,
     measurementHistory: measurementHistory(state),
+    extractionProblems,
   };
   return validateReport(report, state);
 }
@@ -452,7 +461,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     if (value && !allowed.has(value) && !allowed.has(match[1] ?? "")) reasons.push("В тексте есть число, которого нет в документах.");
   }
   for (const issue of state.issues) {
-    const shown = report.conflicts.some((block) => block.body.includes(issue.description.slice(0, 24)));
+    const shown = extractionIssue(issue) ? report.extractionProblems?.some(block => block.sources.some(source => source.documentId === issue.documentId && source.line === issue.line)) : report.conflicts.some((block) => block.body.includes(issue.description.slice(0, 24)));
     if (!shown) reasons.push("Ошибка документа не попала в текст разбора.");
   }
   const confirmed = state.documents.filter((item) => item.status === "ready");
