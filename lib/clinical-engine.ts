@@ -44,7 +44,7 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
         }
       }
     }
-    const status: AxisStatus = axisFacts.length === 0 ? "insufficient_data" : missing.length === 0 ? "sufficient_data" : "partial_data";
+    const status: AxisStatus = axisFacts.length === 0 ? "insufficient_data" : axis.kind === "labs" && missing.length === 0 ? "sufficient_data" : "partial_data";
     return { axisId: axis.id, title: axis.title, status, facts: axisFacts, trends, conflicts, missing };
   });
   return { axes, relations };
