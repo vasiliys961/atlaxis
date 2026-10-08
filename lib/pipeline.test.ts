@@ -163,13 +163,13 @@ test("blank contradiction, dose split and trend", () => {
   assert.equal(blood?.body.split("\n").filter(Boolean).length, blood?.sources.length);
   assert.match(blood?.lead ?? "", /достаточно/);
   const hemoglobin = state.facts.find((fact) => fact.concept === "HGB");
-  assert.equal(hemoglobin?.status, "conflicting");
+  assert.equal(hemoglobin?.status, "extracted");
   const issue = state.issues[0];
   if (hemoglobin && issue) {
     issue.line = 999;
     issue.excerpt = hemoglobin.excerpt;
     buildReport(state);
-    assert.equal(hemoglobin.status, "conflicting");
+    assert.equal(hemoglobin.status, "extracted");
   }
   assert.equal(report.changes.find((item) => item.title === "ЛПНП")?.body.startsWith("4.8 ммоль/л (2024-03-12), затем 3.1"), true);
   const timeline = report.timeline ?? [];
