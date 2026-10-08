@@ -6,6 +6,8 @@ import { extractDocxText, looksLikeDocx, looksLikeLegacyDoc } from "./docx";
 import { heicToJpeg, isHeicContainer, jpegName } from "./heic";
 import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
+import { extractSpreadsheet } from "./spreadsheet";
+import { extractDicom } from "./dicom";
 import { decideProcessing } from "./policy";
 import { polzaKey, readImageJson } from "./polza";
 import { contentHash, newId, parseDocument } from "./parse";
@@ -14,7 +16,7 @@ import { PIPELINE_VERSION, type MedicalDocument, type OwnerState } from "./types
 const MAX_BYTES = 20 * 1024 * 1024;
 
 const TEXT_EXT = new Set(["txt", "csv", "md"]);
-const WORD_EXT = new Set(["docx"]);
+const WORD_EXT = new Set(["docx", "xls", "xlsx"]);
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
 const KEEP_EXT = new Set(["pdf", "dcm", "dicom"]);
 const HEIC_EXT = new Set(["heic", "heif"]);
@@ -41,6 +43,7 @@ function looksLike(bytes: Buffer, ext: string): boolean {
   if (ext === "webp") return bytes.subarray(0, 4).toString("ascii") === "RIFF";
   if (ext === "pdf") return bytes.subarray(0, 4).toString("ascii") === "%PDF";
   if (ext === "docx") return looksLikeDocx(bytes);
+  if (ext === "xls" || ext === "xlsx") return bytes.length > 4;
   if (ext === "dcm" || ext === "dicom") return bytes.subarray(128, 132).toString("ascii") === "DICM" || bytes.subarray(0, 4).toString("ascii") === "DICM";
   return false;
 }
@@ -179,6 +182,28 @@ export async function settleDocument(
   dropDerivatives(state, id);
 
   if (IMAGE_EXT.has(ext) || ext === "dcm" || ext === "dicom") {
+    if (ext === "dcm" || ext === "dicom") {
+      try {
+        const dicom = extractDicom(bytes);
+        const anonymized = anonymizeText(dicom.text);
+        if (anonymized.leaked) throw new Error("DICOM metadata contains identifying data");
+        document.status = "ready";
+        document.statusLabel = "DICOM прочитан";
+        document.note = dicom.text
+          ? "DICOM-метаданные прочитаны. Идентифицирующие поля не используются как клинические факты."
+          : "DICOM принят, но клинического текста в метаданных не найдено.";
+        document.studyDate = dicom.studyDate;
+        document.anonymizedText = anonymized.text;
+        state.report = null;
+        return document;
+      } catch {
+        document.status = "anonymization_unconfirmed";
+        document.statusLabel = "DICOM сохранён отдельно";
+        document.note = "DICOM сохранён, но метаданные не удалось безопасно разобрать.";
+        state.report = null;
+        return document;
+      }
+    }
     if (IMAGE_EXT.has(ext)) {
       const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
       try {
@@ -251,6 +276,19 @@ export async function settleDocument(
       document.status = "anonymization_unconfirmed";
       document.statusLabel = "Word сохранён отдельно";
       document.note = "В файле Word не нашлось текста. Строки не выдуманы, в разбор он не вошёл.";
+      state.report = null;
+      return document;
+    }
+  } else if (ext === "xls" || ext === "xlsx") {
+    try {
+      decoded = extractSpreadsheet(bytes).text;
+    } catch {
+      decoded = "";
+    }
+    if (!decoded.trim()) {
+      document.status = "anonymization_unconfirmed";
+      document.statusLabel = "Таблица сохранена отдельно";
+      document.note = "В Excel-файле не найдено читаемого содержимого. Значения не выдуманы.";
       state.report = null;
       return document;
     }
