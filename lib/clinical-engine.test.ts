@@ -67,3 +67,19 @@ test("contradictions within a single document are recorded without pretending to
   assert.equal(result.axes.find(a => a.axisId === "lipid_profile")?.conflicts.length,1);
   assert.equal(result.relations.some(r => r.type === "same_measurement_different_document"),false);
 });
+
+test("same-day incompatible units are flagged for manual review, not numerically compared", () => {
+  const state = sample();
+  state.facts.push(fact("f1","a","2025-01-01",4.8), fact("f2","b","2025-01-01",185,"мг/дл"));
+  const axis = analyzeClinicalState(state).axes.find(a => a.axisId === "lipid_profile");
+  assert.equal(axis?.conflicts.length, 1);
+  assert.match(axis?.conflicts[0]?.explanation ?? "", /единицы измерения/);
+  assert.equal(axis?.trends.length, 0);
+  assert.equal(analyzeClinicalState(state).relations.some(r => r.type === "same_measurement_different_document"), true);
+});
+
+test("same-day measurements with identical values and units are not discrepancies", () => {
+  const state = sample();
+  state.facts.push(fact("f1","a","2025-01-01",4.8), fact("f2","b","2025-01-01",4.8));
+  assert.equal(analyzeClinicalState(state).axes.find(a => a.axisId === "lipid_profile")?.conflicts.length, 0);
+});
