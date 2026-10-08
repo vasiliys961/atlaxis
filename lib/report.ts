@@ -9,35 +9,6 @@ function isPicture(name: string): boolean {
   return /\.(png|jpe?g|webp)$/i.test(name);
 }
 
-function imagePeriodLinks(state: OwnerState): ReportBlock[] {
-  const ready = new Set(state.documents.filter((item) => item.status === "ready").map((item) => item.id));
-  const blocks: ReportBlock[] = [];
-  const seen = new Set<string>();
-  for (const picture of state.documents) {
-    if (!ready.has(picture.id) || !isPicture(picture.fileName)) continue;
-    for (const imageFact of state.facts) {
-      if (imageFact.documentId !== picture.id || !imageFact.date) continue;
-      const month = imageFact.date.slice(0, 7);
-      const other = state.facts.find((fact) => (
-        ready.has(fact.documentId)
-        && fact.documentId !== picture.id
-        && fact.date?.slice(0, 7) === month
-      ));
-      if (!other?.date) continue;
-      const key = `${picture.id}|${month}|${other.documentId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const otherDocument = state.documents.find((item) => item.id === other.documentId);
-      blocks.push({
-        title: "В тот же период",
-        body: `В тот же период, ${month}, запись есть и на снимке «${picture.fileName}», и в документе «${otherDocument?.fileName ?? "документ"}». Оба числа уже были в этих файлах. Ясной связи разбор не называет.`,
-        sources: [sourceFor(state, imageFact), sourceFor(state, other)],
-      });
-    }
-  }
-  return blocks;
-}
-
 export function buildRelationships(state: OwnerState): ReportBlock[] {
   const clinical = analyzeClinicalState(state);
   return [
@@ -51,35 +22,6 @@ export function buildRelationships(state: OwnerState): ReportBlock[] {
     })),
     // Temporal coincidence alone is not a clinical relationship.
   ];
-}
-
-function periodLinks(state: OwnerState): ReportBlock[] {
-  const blocks: ReportBlock[] = [];
-  const seen = new Set<string>();
-  for (const medication of state.medications) {
-    if (!medication.date) continue;
-    const month = medication.date.slice(0, 7);
-    const fact = state.facts.find((item) => item.date?.slice(0, 7) === month);
-    if (!fact?.date) continue;
-    const key = `${medication.name}|${month}|${fact.concept}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const document = state.documents.find((item) => item.id === medication.documentId);
-    blocks.push({
-      title: "В тот же период",
-      body: `В тот же период, ${month}, в документах есть и «${medication.name}», и ${fact.label}. Ясной связи разбор не называет.`,
-      sources: [
-        sourceFor(state, fact),
-        {
-          documentId: medication.documentId,
-          documentName: document?.fileName ?? "документ",
-          line: medication.line,
-          excerpt: medication.excerpt,
-        },
-      ],
-    });
-  }
-  return blocks;
 }
 
 function plural(count: number, one: string, few: string, many: string): string {
