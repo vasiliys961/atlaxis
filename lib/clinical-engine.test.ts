@@ -52,3 +52,18 @@ test("patient report does not claim a trend across incompatible units", () => {
   const report = buildReport(state);
   assert.equal(report.changes.some(block => block.title === "ЛПНП"), false);
 });
+
+test("medication and imaging axes reflect actual ready documents", () => {
+  const state = sample();
+  state.medications.push({ id:"m",documentId:"a",name:"аторвастатин",dose:20,doseText:"20",unit:"мг",date:"2024-01-01",line:1,excerpt:"аторвастатин 20 мг" });
+  const result = analyzeClinicalState(state);
+  assert.equal(result.axes.find(a => a.axisId === "medications_as_written")?.status,"sufficient_data");
+  assert.equal(result.axes.find(a => a.axisId === "imaging")?.status,"insufficient_data");
+});
+test("contradictions within a single document are recorded without pretending to be cross-document", () => {
+  const state = sample();
+  state.facts.push(fact("f1","a","2024-01-01",4.8),fact("f2","a","2024-01-01",5.8));
+  const result = analyzeClinicalState(state);
+  assert.equal(result.axes.find(a => a.axisId === "lipid_profile")?.conflicts.length,1);
+  assert.equal(result.relations.some(r => r.type === "same_measurement_different_document"),false);
+});
