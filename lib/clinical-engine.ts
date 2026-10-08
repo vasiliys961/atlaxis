@@ -1,4 +1,4 @@
-import { AXES, type AxisStatus } from "./catalog";
+import { AXES, describeAxes, type AxisStatus } from "./catalog";
 import type { MedicalFact, OwnerState, SourceRef } from "./types";
 
 type Trend = { explanation: string; sourceRefs: SourceRef[] };
@@ -13,6 +13,8 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
   const ready = new Set(state.documents.filter(d => d.status === "ready").map(d => d.id));
   const facts = state.facts.filter(f => ready.has(f.documentId));
   const relations: Relation[] = [];
+  const eligibleDocuments = state.documents.filter(d => ready.has(d.id));
+  const axisStatuses = new Map(describeAxes({ facts, medications: state.medications.filter(m => ready.has(m.documentId)), documents: eligibleDocuments, issues: state.issues.filter(i => ready.has(i.documentId)) }).map(axis => [axis.id, axis.status]));
   const axes = AXES.map(axis => {
     const axisFacts = facts.filter(f => axis.concepts.includes(f.concept));
     const missing = axis.required.filter(c => !axisFacts.some(f => f.concept === c));
@@ -24,11 +26,11 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
       for (const row of rows) if (row.date) byDate.set(row.date, [...(byDate.get(row.date) ?? []), row]);
       for (const [date, sameDate] of byDate) {
         const distinct = new Set(sameDate.map(f => `${f.value}|${f.unit.trim().toLowerCase()}`));
-        if (distinct.size > 1 && new Set(sameDate.map(f => f.documentId)).size > 1) {
+        if (distinct.size > 1) {
           const refs = sameDate.map(f => source(state, f));
           const explanation = `В записях показателя ${sameDate[0].label} на ${date} есть расхождение. Уточните первичный бланк.`;
           conflicts.push({ explanation, sourceRefs: refs });
-          relations.push({ type: "same_measurement_different_document", explanation, sourceRefs: refs });
+          if (new Set(sameDate.map(f => f.documentId)).size > 1) relations.push({ type: "same_measurement_different_document", explanation, sourceRefs: refs });
         }
       }
       const dated = rows.filter(f => f.date && f.unit.trim() && Number.isFinite(f.value) && !byDate.get(f.date)?.some(other => other.id !== f.id && (other.value !== f.value || other.unit !== f.unit)));
@@ -46,7 +48,7 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
         }
       }
     }
-    const status: AxisStatus = axisFacts.length === 0 ? "insufficient_data" : axis.kind === "labs" && missing.length === 0 ? "sufficient_data" : "partial_data";
+    const status: AxisStatus = axisStatuses.get(axis.id) ?? "insufficient_data";
     return { axisId: axis.id, title: axis.title, status, facts: axisFacts, trends, conflicts, missing };
   });
   return { axes, relations };
