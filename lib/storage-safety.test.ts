@@ -32,3 +32,19 @@ test("corrupted patient history is never silently replaced with empty state", as
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("production requires persistent storage", async () => {
+  const { dataRoot } = await import("./data-root");
+  const previous = process.env.VERCEL;
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  try {
+    process.env.VERCEL = "1";
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    assert.throws(() => dataRoot(), /persistent_patient_storage_required/);
+  } finally {
+    if (previous === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previous;
+    if (token === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = token;
+  }
+});
