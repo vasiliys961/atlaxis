@@ -115,6 +115,8 @@ export type ReportView = {
   imageReadings?: { name: string; json: string }[];
   wording?: { model: string; label: string; text: string }[];
   modelsReady?: boolean;
+  clinicalQuality?: { score: number; verdict: "pass" | "review" | "block"; evaluatorModels: string[]; blockerCount: number };
+  axisResults?: { axisId: string; title: string; status: "sufficient_data" | "partial_data" | "insufficient_data"; factCount: number; trendCount: number; conflictCount: number; missingCount: number }[];
 };
 
 export type StoredReport = ReportView & { id: string };
