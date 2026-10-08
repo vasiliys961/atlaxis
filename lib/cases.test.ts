@@ -91,8 +91,8 @@ test("simple blank extracts facts and stays a reference", async () => {
   assert.match(report.guidelineNote, /европейские и американские/);
   assert.match(report.guidelineNote, /Пометка/);
   const offered = report.catalog?.find((item) => item.version === "2025");
-  assert.equal(offered?.targetValue, "1.8");
-  assert.match(offered ? targetMark(offered) : "", /не личная цель — 1\.8 ммоль\/л/);
+  assert.equal(offered?.targetValue, "1.4");
+  assert.match(offered ? targetMark(offered) : "", /не личная цель — 1\.4 ммоль\/л/);
   assert.doesNotMatch(report.themes.map((item) => item.body).join("\n"), /1\.8/);
   assert.doesNotMatch(JSON.stringify(report), /сдайте|назначьте|диагноз\s*:/i);
 });
@@ -142,13 +142,13 @@ test("table and conclusion disagreement is shown", async () => {
 test("guideline target is shown with a mark and stays out of the lab lines", async () => {
   const state = await load(["ldl-2024.txt"], "EU");
   const report = buildReport(state);
-  const target = guidelinesFor("EU").flatMap((item) => item.targets ?? []).find((item) => item.value === 1.8);
+  const target = guidelinesFor("EU").flatMap((item) => item.targets ?? []).find((item) => item.value === 1.4);
   assert.ok(target);
   assert.equal(target?.population.includes("very-high"), true);
   const current = report.catalog?.find((item) => item.version === "2025");
   assert.equal(current?.standing, "current");
   assert.equal(current?.origin, "selected");
-  assert.equal(current?.targetValue, "1.8");
+  assert.equal(current?.targetValue, "1.4");
   assert.equal(current?.targetUnit, "ммоль/л");
   assert.match(current ? targetMark(current) : "", /не личная цель/);
   assert.equal(report.catalog?.some((item) => item.version === "2018" || item.version === "2019"), false);
