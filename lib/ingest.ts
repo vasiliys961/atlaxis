@@ -4,6 +4,7 @@ import { writeBinary } from "./files";
 import { anonymizeText } from "./anonymize";
 import { extractDocxText, looksLikeDocx, looksLikeLegacyDoc } from "./docx";
 import { heicToJpeg, isHeicContainer, jpegName } from "./heic";
+import { reconcileLabReading } from "./lab-reading";
 import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
 import { extractSpreadsheet } from "./spreadsheet";
@@ -223,7 +224,7 @@ export async function settleDocument(
         if (reading) {
           const scrubbed = scrubReading(reading);
           if (!scrubbed.leaked) {
-            const parsed = parseDocument(scrubbed.lines);
+            const parsed = reconcileLabReading(JSON.parse(scrubbed.json));
             document.status = "ready";
             document.statusLabel = "Готово";
             document.note = scrubbed.lines.trim()

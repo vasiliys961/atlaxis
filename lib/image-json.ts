@@ -78,7 +78,7 @@ export function readingLines(reading: ImageReading): string {
   if (reading.studyDate) lines.push(`Дата исследования: ${reading.studyDate}`);
   for (const line of reading.lines) lines.push(line);
   for (const item of reading.measurements) {
-    const range = item.referenceLow && item.referenceHigh ? ` ${item.referenceLow}-${item.referenceHigh}` : "";
+    const range = item.referenceLow && item.referenceHigh ? ` ${item.referenceLow}-${item.referenceHigh}` : item.referenceLow ? ` референс: >=${item.referenceLow}` : item.referenceHigh ? ` референс: <=${item.referenceHigh}` : "";
     lines.push(`${item.name} ${item.value} ${item.unit}${range}`.trim());
   }
   for (const item of reading.medications) lines.push(`${item.name} ${item.dose} ${item.unit}`.trim());

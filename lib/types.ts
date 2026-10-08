@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-08.4";
+export const PIPELINE_VERSION = "2026-10-08.5";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
