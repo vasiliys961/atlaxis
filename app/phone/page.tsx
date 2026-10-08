@@ -1,5 +1,6 @@
 "use client";
 
+import { VideoDocuments } from "@/components/VideoDocuments";
 import { Suspense, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -50,6 +51,7 @@ function PhoneUpload() {
         <input ref={camera} hidden type="file" accept="image/png,image/jpeg,image/heic,image/heif,.heic,.heif" capture="environment" onChange={(event) => void send(event.target.files)} />
         <input ref={gallery} hidden type="file" accept=".png,.jpg,.jpeg,.heic,.heif,image/png,image/jpeg,image/heic,image/heif" multiple onChange={(event) => void send(event.target.files)} />
       </div>
+      <VideoDocuments endpoint="/api/phone" code={code} />
       {error ? <p className="error">{error}</p> : null}
       {note ? <p className="quiet">{note}</p> : null}
     </article>

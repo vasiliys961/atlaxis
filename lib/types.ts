@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-04.7";
+export const PIPELINE_VERSION = "2026-10-08.9";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
@@ -10,6 +10,14 @@ export type DocumentStatus =
   | "failed";
 
 export type MedicalDocument = {
+  visualAnalysis?: {
+    status: "ready" | "unavailable";
+    totalFrames: number;
+    analyzedFrames: number[];
+    coverage: "complete" | "sampled";
+    limitations: string[];
+    findings: NonNullable<import("./image-json").ImageReading["visualFindings"]>;
+  };
   id: string;
   fileName: string;
   byteSize: number;
@@ -91,6 +99,11 @@ export type ReportBlock = {
 };
 
 export type ReportView = {
+  extractionProblems?: ReportBlock[];
+  measurementHistory?: import("./measurement-history").MeasurementHistory[];
+  instrumentStudies?: import("./instrument-studies").InstrumentStudy[];
+  imagingStudies?: { documentId: string; documentName: string; status: "ready" | "unavailable"; totalFrames: number; analyzedFrames: number[]; coverage: "complete" | "sampled"; limitations: string[] }[];
+  clinicalSynthesis?: import("./clinical-synthesis").ClinicalSynthesis;
   generatedAt: string;
   inputHash: string;
   region: Region;
@@ -115,6 +128,8 @@ export type ReportView = {
   imageReadings?: { name: string; json: string }[];
   wording?: { model: string; label: string; text: string }[];
   modelsReady?: boolean;
+  clinicalQuality?: { score: number; verdict: "pass" | "review" | "block"; evaluatorModels: string[]; blockerCount: number };
+  axisResults?: { axisId: string; title: string; status: "sufficient_data" | "partial_data" | "insufficient_data"; factCount: number; trendCount: number; conflictCount: number; missingCount: number }[];
 };
 
 export type StoredReport = ReportView & { id: string };
@@ -148,7 +163,11 @@ export type JobRecord = {
   origin?: "phone" | "computer";
 };
 
+export type ChatMode = "analysis" | "general";
+
 export type ChatTurn = {
+  mode?: ChatMode;
+  sources?: { title: string; url: string; pmid: string; year: string }[];
   role: "user" | "assistant";
   text: string;
   at: string;

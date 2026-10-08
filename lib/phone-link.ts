@@ -23,14 +23,30 @@ function code(): string {
 }
 
 async function readLinks(): Promise<PhoneLink[]> {
+  // Never overwrite a corrupted or unreadable link registry with an empty one.
+  const raw = await readText(LINKS_KEY);
+  if (raw === null) return [];
+  if (!raw.trim()) throw new Error("phone_links_corrupt");
+  return parsePhoneLinks(raw);
+}
+
+export function parsePhoneLinks(raw: string): PhoneLink[] {
+  let parsed: unknown;
   try {
-    const raw = await readText(LINKS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as PhoneFile;
-    return Array.isArray(parsed.links) ? parsed.links : [];
+    parsed = JSON.parse(raw);
   } catch {
-    return [];
+    throw new Error("phone_links_corrupt");
   }
+  if (!parsed || typeof parsed !== "object" || !("links" in parsed) ||
+      !Array.isArray(parsed.links) || !parsed.links.every((link: unknown) =>
+        link !== null && typeof link === "object" &&
+        "code" in link && typeof link.code === "string" &&
+        "ownerId" in link && typeof link.ownerId === "string" &&
+        "expiresAt" in link && typeof link.expiresAt === "number" &&
+        Number.isFinite(link.expiresAt))) {
+    throw new Error("phone_links_corrupt");
+  }
+  return parsed.links as PhoneLink[];
 }
 
 async function writeLinks(links: PhoneLink[]): Promise<void> {

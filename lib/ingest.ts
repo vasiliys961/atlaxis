@@ -4,17 +4,21 @@ import { writeBinary } from "./files";
 import { anonymizeText } from "./anonymize";
 import { extractDocxText, looksLikeDocx, looksLikeLegacyDoc } from "./docx";
 import { heicToJpeg, isHeicContainer, jpegName } from "./heic";
+import { reconcileLabReading } from "./lab-reading";
 import { scrubReading } from "./image-json";
 import { extractPdfText } from "./pdf";
+import { extractSpreadsheet } from "./spreadsheet";
+import { extractDicom } from "./dicom";
+import { renderDicomFrames } from "./dicom-pixels";
 import { decideProcessing } from "./policy";
-import { polzaKey, readImageJson } from "./polza";
+import { polzaKey, readImageJson, readImageFrames } from "./polza";
 import { contentHash, newId, parseDocument } from "./parse";
 import { PIPELINE_VERSION, type MedicalDocument, type OwnerState } from "./types";
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
 const TEXT_EXT = new Set(["txt", "csv", "md"]);
-const WORD_EXT = new Set(["docx"]);
+const WORD_EXT = new Set(["docx", "xls", "xlsx"]);
 const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
 const KEEP_EXT = new Set(["pdf", "dcm", "dicom"]);
 const HEIC_EXT = new Set(["heic", "heif"]);
@@ -41,6 +45,7 @@ function looksLike(bytes: Buffer, ext: string): boolean {
   if (ext === "webp") return bytes.subarray(0, 4).toString("ascii") === "RIFF";
   if (ext === "pdf") return bytes.subarray(0, 4).toString("ascii") === "%PDF";
   if (ext === "docx") return looksLikeDocx(bytes);
+  if (ext === "xls" || ext === "xlsx") return bytes.length > 4;
   if (ext === "dcm" || ext === "dicom") return bytes.subarray(128, 132).toString("ascii") === "DICM" || bytes.subarray(0, 4).toString("ascii") === "DICM";
   return false;
 }
@@ -179,6 +184,39 @@ export async function settleDocument(
   dropDerivatives(state, id);
 
   if (IMAGE_EXT.has(ext) || ext === "dcm" || ext === "dicom") {
+    if (ext === "dcm" || ext === "dicom") {
+      try {
+        const dicom = extractDicom(bytes);
+        const anonymized = anonymizeText(dicom.text);
+        if (anonymized.leaked) throw new Error("DICOM metadata contains identifying data");
+        document.status = "ready";
+        document.statusLabel = "DICOM прочитан";
+        document.note = dicom.text
+          ? "DICOM-метаданные прочитаны. Идентифицирующие поля не используются как клинические факты."
+          : "DICOM принят, но клинического текста в метаданных не найдено.";
+        document.studyDate = dicom.studyDate;
+        document.anonymizedText = anonymized.text;
+        try {
+          const pixels = await renderDicomFrames(bytes);
+          const reading = pixels.canSend && polzaKey() ? await readImageFrames(pixels.frames.map(frame => ({ bytes: frame.png, mime: "image/png", index: frame.index }))) : null;
+          const scrubbed = reading ? scrubReading(reading) : null;
+          const clean = scrubbed && !scrubbed.leaked ? JSON.parse(scrubbed.json) as typeof reading : null;
+          document.visualAnalysis = { status: clean ? "ready" : "unavailable", totalFrames: pixels.totalFrames, analyzedFrames: clean ? pixels.frames.map(f => f.index) : [], coverage: pixels.coverage, limitations: [...pixels.limitations, ...(!polzaKey() ? ["Ключ визуальной модели не задан."] : [])], findings: clean?.visualFindings ?? [] };
+          document.note = clean ? "Из DICOM извлечены пиксельные кадры и предварительные визуальные наблюдения. Они учитываются отдельно от подтверждённых записей." : "Пиксельные кадры извлечены локально; визуальная интерпретация недоступна. Причины указаны в разборе.";
+        } catch (error) {
+          document.visualAnalysis = { status: "unavailable", totalFrames: 0, analyzedFrames: [], coverage: "sampled", limitations: [error instanceof Error ? error.message : "Не удалось извлечь пиксели DICOM."], findings: [] };
+          document.note = "DICOM-метаданные прочитаны; пиксельный анализ недоступен. Причина указана в разборе.";
+        }
+        state.report = null;
+        return document;
+      } catch {
+        document.status = "anonymization_unconfirmed";
+        document.statusLabel = "DICOM сохранён отдельно";
+        document.note = "DICOM сохранён, но метаданные не удалось безопасно разобрать.";
+        state.report = null;
+        return document;
+      }
+    }
     if (IMAGE_EXT.has(ext)) {
       const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
       try {
@@ -186,7 +224,7 @@ export async function settleDocument(
         if (reading) {
           const scrubbed = scrubReading(reading);
           if (!scrubbed.leaked) {
-            const parsed = parseDocument(scrubbed.lines);
+            const parsed = reconcileLabReading(JSON.parse(scrubbed.json));
             document.status = "ready";
             document.statusLabel = "Готово";
             document.note = scrubbed.lines.trim()
@@ -194,6 +232,8 @@ export async function settleDocument(
               : "На снимке не нашлось видимого текста. Числа с него в разбор не вошли.";
             document.studyDate = parsed.studyDate;
             document.anonymizedText = scrubbed.json;
+            document.visualAnalysis = { status: "ready", totalFrames: 1, analyzedFrames: [0], coverage: "complete", limitations: ["Один кадр не заменяет полное исследование; визуальные наблюдения ИИ требуют проверки специалистом."], findings: (JSON.parse(scrubbed.json) as typeof reading).visualFindings ?? [] };
+            document.note = "Из изображения извлечены видимый текст, измерения и предварительные визуальные наблюдения. Полное исследование и диагноз ими не подтверждаются.";
             for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });
             for (const medication of parsed.medications) state.medications.push({ ...medication, id: newId(), documentId: id });
             for (const issue of parsed.issues) state.issues.push({ ...issue, id: newId(), documentId: id });
@@ -216,7 +256,7 @@ export async function settleDocument(
     document.statusLabel = "Снимок сохранён отдельно";
     document.note = picture
       ? eyes.allow
-        ? "Снимок отправлен на чтение, но показатели из ответа не приняты. В разбор они не вошли."
+        ? "Ответ распознавания не принят: он отсутствует, не прошёл проверку или превышает допустимый объём. Снимок не вошёл в разбор; попробуйте отдельные страницы или более чёткие фотографии."
         : polzaKey()
           ? eyes.reason
           : origin === "phone"
@@ -251,6 +291,19 @@ export async function settleDocument(
       document.status = "anonymization_unconfirmed";
       document.statusLabel = "Word сохранён отдельно";
       document.note = "В файле Word не нашлось текста. Строки не выдуманы, в разбор он не вошёл.";
+      state.report = null;
+      return document;
+    }
+  } else if (ext === "xls" || ext === "xlsx") {
+    try {
+      decoded = extractSpreadsheet(bytes).text;
+    } catch {
+      decoded = "";
+    }
+    if (!decoded.trim()) {
+      document.status = "anonymization_unconfirmed";
+      document.statusLabel = "Таблица сохранена отдельно";
+      document.note = "В Excel-файле не найдено читаемого содержимого. Значения не выдуманы.";
       state.report = null;
       return document;
     }

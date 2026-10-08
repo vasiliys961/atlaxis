@@ -28,9 +28,10 @@ export const GUIDELINES: Guideline[] = [
     organization: "ESC/EAS",
     title: "Focused update of the guidelines for the management of dyslipidaemias",
     version: "2025",
-    publicationDate: "2025",
+    publicationDate: "2025-08-29",
     region: "EU",
-    targets: [{ concept: "LDL_C", population: "very-high cardiovascular risk", value: 1.8, unit: "ммоль/л" }],
+    url: "https://www.escardio.org/guidelines/clinical-practice-guidelines/all-esc-practice-guidelines/dyslipidaemias/",
+    targets: [{ concept: "LDL_C", population: "very-high cardiovascular risk (goal strictly below)", value: 1.4, unit: "ммоль/л" }],
   },
   {
     id: "aha-acc-cholesterol-2018",
@@ -115,7 +116,7 @@ export function guidelineSentence(region: Guideline["region"], search?: string |
   const current = currentGuidelines(region);
   if (all.length === 0) {
     if (search && sonarFoundRussian(search)) {
-      return "Поиск нашёл опубликованную российскую рекомендацию. Цитата ниже: это поиск, не запись каталога. Рядом остаются европейские и американские записи. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
+      return "Поисковый ответ упоминает российскую рекомендацию; её редакция и содержание требуют проверки. Это поиск, не подтверждённая запись каталога. Рядом остаются европейские и американские записи. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
     }
     if (search) {
       return "Поиск не нашёл российскую рекомендацию. Ниже есть записи США и Европы. Пометка: они не заменяют российскую рекомендацию, а число цели — не личная цель.";
@@ -126,5 +127,5 @@ export function guidelineSentence(region: Guideline["region"], search?: string |
   const olderNote = all.some((item) => item.supersededBy)
     ? " Более ранняя редакция не показывается и актуальной не считается."
     : "";
-  return `Разбор называет только последнюю редакцию для ${regionName}: ${used}.${olderNote} Пометка: число цели, если оно есть в записи, относится к группе из источника и не является личной целью.`;
+  return `Справочные записи каталога для ${regionName}: ${used}. Актуальность редакции и применимость требуют проверки.${olderNote} Пометка: число цели, если оно есть в записи, относится к группе из источника и не является личной целью.`;
 }

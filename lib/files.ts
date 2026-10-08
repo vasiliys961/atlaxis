@@ -14,13 +14,15 @@ export async function readText(key: string): Promise<string | null> {
   if (!useBlob()) {
     try {
       return await readFile(localPath(key), "utf8");
-    } catch {
-      return null;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
     }
   }
   const { get } = await import("@vercel/blob");
   const result = await get(key, { access: "private", useCache: false });
-  if (!result || result.statusCode !== 200) return null;
+  if (!result) return null;
+  if (result.statusCode !== 200) throw new Error("owner_storage_read_failed");
   return new Response(result.stream).text();
 }
 
@@ -49,7 +51,8 @@ export async function readBinary(key: string): Promise<Buffer | null> {
   if (!useBlob()) return null;
   const { get } = await import("@vercel/blob");
   const result = await get(key, { access: "private", useCache: false });
-  if (!result || result.statusCode !== 200) return null;
+  if (!result) return null;
+  if (result.statusCode !== 200) throw new Error("owner_binary_storage_read_failed");
   return Buffer.from(await new Response(result.stream).arrayBuffer());
 }
 

@@ -33,6 +33,7 @@ export async function polzaText(
   content: string | Part[],
   maxTokens: number,
   audience: "eyes" | "brain" = "brain",
+  options: { system?: string; timeoutMs?: number } = {},
 ): Promise<string> {
   const hasImage = Array.isArray(content) && content.some((part) => part.type === "image_url");
   const decision = decideProcessing({
@@ -58,9 +59,9 @@ export async function polzaText(
       model,
       temperature: 0,
       max_tokens: maxTokens,
-      messages: [{ role: "user", content }],
+      messages: [...(options.system ? [{ role: "system", content: options.system }] : []), { role: "user", content }],
     }),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 60_000),
   });
   if (!response.ok) throw new Error("polza_failed");
   const body = (await response.json()) as { choices?: { message?: { content?: unknown } }[] };
@@ -69,20 +70,27 @@ export async function polzaText(
 
 const EYES_PROMPT = [
   "Верни только JSON того, что видно на изображении.",
-  "Ключи: studyDate, lines, measurements, medications.",
+  "Ключи: studyDate, lines, measurements, medications, visualFindings.",
   "studyDate — дата исследования в формате YYYY-MM-DD или пустая строка.",
   "lines — видимые строки текста.",
-  "measurements — объекты name, value, unit, referenceLow, referenceHigh.",
+  "measurements — объекты name, value, unit, referenceLow, referenceHigh. Извлекай все лабораторные строки, а не только липиды. Сохраняй точное название, десятичный знак, единицы и границы референса этого бланка. Не подставляй общие нормы. Для одностороннего референса заполняй только соответствующую границу. Качественные значения и знаки < или > сохраняй буквально. Не пересчитывай единицы. lines должны содержать исходные строки с результатами и датами для сверки; повторения разных дат или образцов сохраняй отдельно.",
   "medications — объекты name, dose, unit.",
+  "Для ЭКГ и спирометрии сохраняй в lines название исследования, напечатанные ЧСС, PR/PQ, QRS, QT, QTc, скорость/усиление, FEV1/ОФВ1, FVC/ФЖЕЛ, отношение, PEF/ПОС, заголовки столбцов (измерено, должное, %, LLN, z-score), до/после пробы и заключение. Не вычисляй эти параметры из кривой. Табличные строки сохраняй с заголовками и исходным порядком чисел, не выбирая столбец наугад.",
   "Не добавляй диагноз, назначение и числа, которых на изображении нет.",
-  "Если текста нет, верни пустые массивы.",
+  "Если текста нет, lines, measurements и medications оставь пустыми. Для фотографии текстового бланка visualFindings оставь пустым.",
+  "Для медицинского изображения дополнительно опиши непосредственно видимые структуры и возможные визуальные изменения в visualFindings: объекты description, region, confidence (low или moderate), frame (номер предоставленного кадра или null).",
+  "Отделяй видимые признаки от текста заключения и диагностических предположений. Не ставь окончательный диагноз, не назначай лечение, не выдумывай размер, плотность/HU, кровоток или расстояние без показанной шкалы и проверенного измерения. Пустой visualFindings не означает отсутствие патологии.",
 ].join(" ");
 
 export async function readImageJson(bytes: Buffer, mime: string): Promise<ImageReading | null> {
+  return readImageFrames([{ bytes, mime, index: 0 }]);
+}
+
+export async function readImageFrames(frames: { bytes: Buffer; mime: string; index: number }[]): Promise<ImageReading | null> {
   const decision = decideProcessing({
     operation: "read_image",
     kind: "image",
-    bytes: bytes.length,
+    bytes: frames.reduce((sum, frame) => sum + frame.bytes.length, 0),
     hasKey: Boolean(polzaKey()),
   });
   if (!decision.allow) return null;
@@ -90,14 +98,17 @@ export async function readImageJson(bytes: Buffer, mime: string): Promise<ImageR
     EYES_MODEL,
     [
       { type: "text", text: EYES_PROMPT },
-      { type: "image_url", image_url: { url: `data:${mime};base64,${bytes.toString("base64")}` } },
+      ...frames.flatMap<Part>(frame => [{ type: "text", text: `Кадр ${frame.index}` }, { type: "image_url", image_url: { url: `data:${frame.mime};base64,${frame.bytes.toString("base64")}` } }]),
     ],
-    2500,
+    3500,
     "eyes",
+    { timeoutMs: 35_000 },
   );
   const json = content.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
-    return sanitizeImageReading(JSON.parse(json));
+    const reading = sanitizeImageReading(JSON.parse(json));
+    if (reading?.visualFindings?.some(f => f.frame !== null && !frames.some(frame => frame.index === f.frame))) return null;
+    return reading;
   } catch {
     return null;
   }

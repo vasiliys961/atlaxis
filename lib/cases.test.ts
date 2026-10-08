@@ -91,8 +91,8 @@ test("simple blank extracts facts and stays a reference", async () => {
   assert.match(report.guidelineNote, /европейские и американские/);
   assert.match(report.guidelineNote, /Пометка/);
   const offered = report.catalog?.find((item) => item.version === "2025");
-  assert.equal(offered?.targetValue, "1.8");
-  assert.match(offered ? targetMark(offered) : "", /не личная цель — 1\.8 ммоль\/л/);
+  assert.equal(offered?.targetValue, "1.4");
+  assert.match(offered ? targetMark(offered) : "", /не личная цель — 1\.4 ммоль\/л/);
   assert.doesNotMatch(report.themes.map((item) => item.body).join("\n"), /1\.8/);
   assert.doesNotMatch(JSON.stringify(report), /сдайте|назначьте|диагноз\s*:/i);
 });
@@ -100,7 +100,8 @@ test("simple blank extracts facts and stays a reference", async () => {
 test("one marker across years is a change, not a diagnosis", async () => {
   const state = await load(["ldl-2019.txt", "ldl-2024.txt"]);
   const report = buildReport(state);
-  assert.match(report.changes.map((item) => item.body).join("\n"), /снизилось/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /4\.2 ммоль\/л.*затем 3\.4 ммоль\/л/);
+  assert.match(report.changes.map((item) => item.body).join("\n"), /причина изменения по этим данным не устанавливается/);
   assert.doesNotMatch(report.changes.map((item) => item.body).join("\n"), /диагноз/);
 });
 
@@ -122,10 +123,10 @@ test("two doses in one document stay a conflict", async () => {
   assert.match(report.conflicts.map((item) => item.body).join("\n"), /одной дате или к одному документу/);
 });
 
-test("same month links a drug and a lab value without a cause", async () => {
+test("same month does not imply a clinical relationship between drug and lab", async () => {
   const state = await load(["simple.txt", "dose-b.txt"]);
   const report = buildReport(state);
-  assert.match(report.relationships.map((item) => item.body).join("\n"), /тот же период/);
+  assert.equal(report.relationships.length, 0);
   assert.match(report.themes.map((item) => item.body).join("\n"), /В документе:/);
   assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал/);
   assert.match(report.gaps.join("\n"), /Ось «Давление»/);
@@ -141,13 +142,13 @@ test("table and conclusion disagreement is shown", async () => {
 test("guideline target is shown with a mark and stays out of the lab lines", async () => {
   const state = await load(["ldl-2024.txt"], "EU");
   const report = buildReport(state);
-  const target = guidelinesFor("EU").flatMap((item) => item.targets ?? []).find((item) => item.value === 1.8);
+  const target = guidelinesFor("EU").flatMap((item) => item.targets ?? []).find((item) => item.value === 1.4);
   assert.ok(target);
   assert.equal(target?.population.includes("very-high"), true);
   const current = report.catalog?.find((item) => item.version === "2025");
   assert.equal(current?.standing, "current");
   assert.equal(current?.origin, "selected");
-  assert.equal(current?.targetValue, "1.8");
+  assert.equal(current?.targetValue, "1.4");
   assert.equal(current?.targetUnit, "ммоль/л");
   assert.match(current ? targetMark(current) : "", /не личная цель/);
   assert.equal(report.catalog?.some((item) => item.version === "2018" || item.version === "2019"), false);

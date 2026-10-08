@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SourceQuote } from "@/components/SourceQuote";
 import { useEffect, useState, type ReactNode } from "react";
 import { discussFinding, discussSheet } from "@/lib/discuss";
 import { targetMark } from "@/lib/guidelines";
@@ -20,13 +21,16 @@ function plain(text: string): string {
 
 function SearchNote({ text }: { text?: string }) {
   if (!text) return null;
-  return (
-    <article className="note">
-      <h3>Что нашлось в опубликованных рекомендациях</h3>
-      <p>{plain(text)}</p>
-      <p className="quiet">Это цитата для пояснения уже записанных анализов, не диагноз и не лечение.</p>
-    </article>
-  );
+  const marker = "\n\nПроверка доступа к первичным страницам";
+  let sources: {url:string;region:string;status:string}[] = [];
+  try { const data = text.split(marker)[1]?.split("\n")[1]; if (data) sources = JSON.parse(data); } catch {}
+  return <article className="note">
+    <h3>Справочная основа: клинические рекомендации</h3>
+    <p>Поиск используется для подбора источников. Его непроверенный текст не является интерпретацией ваших результатов.</p>
+    {!sources.length ? <p className="quiet">Проверяемые ссылки из поискового ответа не получены.</p> : null}
+    {sources.map(source => <p key={source.url}><a href={source.url} target="_blank" rel="noopener noreferrer">{source.region}: первичная страница</a> — {source.status === "retrieved" ? "получен фрагмент текста" : "текст страницы не получен"}.</p>)}
+    <p className="quiet">Проверяется доступ максимум к трём первичным страницам. Доступ не подтверждает актуальность редакции, весь документ или применимость к человеку. Поисковые сведения требуют проверки. Научная статья не заменяет клиническую рекомендацию.</p>
+  </article>;
 }
 
 function Lines({ text }: { text: string }) {
@@ -40,11 +44,7 @@ function Lines({ text }: { text: string }) {
 }
 
 function Quote({ source }: { source: ReportBlock["sources"][number] }) {
-  return (
-    <blockquote>
-      {source.documentName}, строка {source.line}: {source.excerpt}
-    </blockquote>
-  );
+  return <SourceQuote source={source} />;
 }
 
 function Discuss({ text }: { text: string }) {
@@ -225,6 +225,61 @@ export default function ReportPage() {
         </div>
       </section>
 
+      <section className="section">
+        <h2>Комплексная клиническая интерпретация</h2>
+        {!report.measurementHistory?.length && report.extractionProblems?.length ? <div className="notice"><strong>Результаты анализов пока не извлечены надёжно.</strong><p>Текст документа доступен, но таблица не разобрана. Это проблема чтения файла, а не отсутствие показателей у вас. После обновления обработки загрузите исходный PDF повторно.</p></div> : null}
+        <p className="quiet">Основная система рекомендаций: {{ RU: "Российская Федерация", US: "США", EU: "Европа" }[report.region]}. Источники других регионов используются для отдельного сопоставления.</p>
+        {!report.clinicalSynthesis ? (
+          <p className="quiet">{report.modelsReady ? "Общий разбор всех документов ещё готовится." : "Для комплексной интерпретации нужен подключённый медицинский ИИ. Записи из документов доступны ниже."}</p>
+        ) : (
+          <>
+            <p className="quiet">{report.clinicalSynthesis.version === "3" ? report.clinicalSynthesis.message : "Предыдущая интерпретация скрыта: требуется обновление в справочном формате."}</p>
+            {report.clinicalSynthesis.version === "3" && report.clinicalSynthesis.status === "ready" ? (
+              <>
+                {report.clinicalSynthesis.overview ? <article className="note"><h3>{report.clinicalSynthesis.overview.title}</h3><Statements block={{ title: report.clinicalSynthesis.overview.title, body: report.clinicalSynthesis.overview.text, sources: report.clinicalSynthesis.overview.sources }} /></article> : null}
+                {report.clinicalSynthesis.documentedRecords.length ? <h3>Что записано в документах</h3> : null}
+                {report.clinicalSynthesis.documentedRecords.map((item, i) => <article className="note" key={`record-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,lead:"Запись автора документа; её актуальность оценивает врач.",sources:item.sources}} /></article>)}
+                {report.clinicalSynthesis.explanations.length ? <h3>Как понимать изменения</h3> : null}
+                {report.clinicalSynthesis.explanations.map((item, i) => <article className="note" key={`explanation-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,sources:item.sources}} />{item.missing.map((text, n) => <p className="quiet" key={n}>Для понимания: {text}</p>)}</article>)}
+                {report.clinicalSynthesis.discussionPoints.length ? <h3>Что обсудить с врачом</h3> : null}
+                {report.clinicalSynthesis.discussionPoints.map((item, i) => <article className="note" key={`question-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,sources:item.sources}} /></article>)}
+                {report.clinicalSynthesis.practicalAdvice.length > 0 ? <h3>Практические аспекты</h3> : null}
+                {report.clinicalSynthesis.practicalAdvice.map((item, index) => <article className="note" key={`advice-${index}`}><h4>{item.title}</h4><Statements block={{ title: item.title, body: item.text, sources: item.sources }} /></article>)}
+                {report.clinicalSynthesis.missingContext.length > 0 ? <details><summary>Каких сведений не хватает для общего вывода</summary>{report.clinicalSynthesis.missingContext.map((text, index) => <p key={index}>{text}</p>)}</details> : null}
+              </>
+            ) : null}
+          </>
+        )}
+      </section>
+
+      {report.instrumentStudies?.length ? <section className="section">
+        <h2>ЭКГ и спирометрия в комплекте</h2>
+        <p className="quiet">Записи учитываются в общем разборе. Подробные параметры доступны для сверки с оригиналом.</p>
+        {report.instrumentStudies.map(study => <article className="note" key={`${study.documentId}-${study.kind}`}>
+          <h3>{study.kind === "ecg" ? "ЭКГ" : "Спирометрия"}: {study.documentName}</h3>
+          <details><summary>Показать напечатанные параметры и источники</summary>
+          {study.parameters.map((parameter, index) => <div key={index}>
+            <p>{parameter.name}: {parameter.status === "printed" ? `${parameter.valueText} ${parameter.unit}` : "значение или столбец не определены однозначно"}.</p>
+            <p className="quiet">{parameter.context}. Строка {parameter.source.line}: {parameter.source.excerpt}</p>
+          </div>)}
+          </details>
+          {study.recordedConclusions.map(source => <p key={source.line}>Запись в документе, не вывод сервиса: {source.excerpt}</p>)}
+          {study.limitations.map((text, i) => <p className="quiet" key={i}>{text}</p>)}
+        </article>)}
+      </section> : null}
+
+      {report.imagingStudies?.length ? <section className="section">
+        <h2>Что обработано в изображениях</h2>
+        {report.imagingStudies.map(study => <article className="note" key={study.documentId}>
+          <h3>{study.documentName}</h3>
+          <p>{study.status === "ready" ? "Визуальная модель обработала кадры." : "Визуальная интерпретация недоступна."} {study.totalFrames > 0 ? `Просмотрено ${study.analyzedFrames.length} из ${study.totalFrames} кадров файла.` : "Кадры файла не удалось прочитать."}</p>
+          <p className="quiet">{study.coverage === "sampled" ? "Это выборка, а не полный анализ исследования." : "Обработаны кадры этого файла; они могут быть частью более крупной серии."}</p>
+          {study.limitations.map((line, index) => <p className="quiet" key={index}>{line}</p>)}
+        </article>)}
+      </section> : null}
+
+      {report.extractionProblems?.length ? <section className="section"><h2>Что не удалось прочитать надёжно</h2>{report.extractionProblems.map(block => <article className="note" key={block.title}><h3>{block.title}</h3><p>{block.body}</p><details><summary>Посмотреть непрочитанные строки</summary>{block.sources.map(source=><Quote key={`${source.documentId}-${source.line}`} source={source} />)}</details></article>)}</section> : null}
+
       {report.conflicts.length > 0 ? (
         <section className="section">
           <h2>Где записи не сходятся</h2>
@@ -236,6 +291,23 @@ export default function ReportPage() {
           ))}
         </section>
       ) : null}
+
+      {report.measurementHistory?.length ? <section className="section">
+        <h2>История показателей</h2>
+        <p className="quiet">Все распознанные числовые показатели сгруппированы по названию. Референсы относятся к конкретному бланку. Неизвестные словарю показатели остаются в тексте источников и общем разборе.</p>
+        {report.measurementHistory.map(group => <details className="note" key={group.concept}>
+          <summary>{group.label} — записей: {group.entries.length}</summary>
+          {group.limitations.map(text => <p className="notice" key={text}>{text}</p>)}
+          <div style={{ overflowX: "auto" }}><table>
+            <thead><tr><th>Дата</th><th>Результат</th><th>Референс бланка</th><th>Источник</th></tr></thead>
+            <tbody>{group.entries.map((entry, i) => <tr key={i}>
+              <td>{entry.date ?? "Не указана"}</td><td>{entry.value} {entry.unit || "(единица не указана)"}{entry.status !== "extracted" ? " — требуется сверка" : ""}</td>
+              <td>{entry.low === null && entry.high === null ? "Не указан" : entry.low === null ? `≤ ${entry.high}` : entry.high === null ? `≥ ${entry.low}` : `${entry.low}–${entry.high}`}</td>
+              <td><details><summary>{entry.source.documentName}</summary><Quote source={entry.source} /></details></td>
+            </tr>)}</tbody>
+          </table></div>
+        </details>)}
+      </section> : null}
 
       {report.timeline && report.timeline.length > 0 ? (
         <section className="section">
@@ -262,9 +334,6 @@ export default function ReportPage() {
       {report.themes.length > 0 ? (
         <section className="section">
           <h2>Что написано в документах</h2>
-          {report.themes.some((block) => block.body.trim() && !block.notes?.some((note) => note.model === writerFor(block).id)) ? (
-            <p className="quiet">Пояснения по темам ещё пишутся.</p>
-          ) : null}
           {report.themes.map((block) => (
             <article key={block.title} className="note">
               <h3>{block.title}</h3>
@@ -281,9 +350,7 @@ export default function ReportPage() {
         <section className="section">
           <h2>Чего в комплекте нет</h2>
           {report.gaps.map((gap) => (
-            <Finding key={gap} text={gap}>
-              <p className="question">{gap}</p>
-            </Finding>
+            <p key={gap} className="question">{gap.replace(/^Ось «([^»]+)»: /, "$1: ")}</p>
           ))}
         </section>
       ) : null}
@@ -304,9 +371,7 @@ export default function ReportPage() {
         <section className="section">
           <h2>Что сказать нельзя</h2>
           {report.cannotSay.map((line) => (
-            <Finding key={line} text={line}>
-              <p className="question">{line}</p>
-            </Finding>
+            <p key={line} className="quiet">{line}</p>
           ))}
         </section>
       ) : null}
@@ -323,10 +388,9 @@ export default function ReportPage() {
       ) : null}
 
       <section className="section">
-        <h2>Какие рекомендации смотрели</h2>
-        <p>{report.guidelineNote}</p>
-        {report.region === "RU" ? <SearchNote text={report.guidelineSearch} /> : null}
-        {report.catalog?.map((item) => {
+        <h2>Источники для объяснения</h2>
+        <SearchNote text={report.guidelineSearch} />
+        {report.themes.some(theme=>theme.title === "Липиды") ? report.catalog?.map((item) => {
           const label = item.origin === "offered"
             ? `${item.standing === "current" ? "Предложена" : "Предложена и актуальной не считается"}: ${item.place}`
             : item.standing === "current"
@@ -338,8 +402,7 @@ export default function ReportPage() {
               {item.url ? <a href={item.url}>Источник</a> : null}
             </p>
           );
-        })}
-        {report.region === "RU" ? null : <SearchNote text={report.guidelineSearch} />}
+        }) : null}
       </section>
 
       <section className="footer-note">

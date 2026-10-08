@@ -1,6 +1,7 @@
 import { audit } from "@/lib/audit";
 import { ownerId } from "@/lib/owner";
 import { withOwner } from "@/lib/store";
+import { sourceDocumentText } from "@/lib/source-document";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         note: document.note,
         studyDate: document.studyDate,
         anonymizedText: document.anonymizedText,
+        sourceText: document.status === "ready" ? sourceDocumentText(document) : "",
         facts: state.facts.filter((fact) => fact.documentId === document.id),
       };
     });

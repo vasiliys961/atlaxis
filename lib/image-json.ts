@@ -15,6 +15,7 @@ export type ImageMedication = {
 };
 
 export type ImageReading = {
+  visualFindings?: { description: string; region: string; confidence: "low" | "moderate"; frame: number | null }[];
   studyDate: string;
   lines: string[];
   measurements: ImageMeasurement[];
@@ -28,18 +29,49 @@ function text(value: unknown, limit = 160): string {
   return String(value).replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
+export const IMAGE_READING_MAX_ROWS = 500;
+export const IMAGE_READING_MAX_TEXT = 120_000;
+
 function rows<T>(value: unknown, map: (item: unknown) => T | null): T[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 40).map(map).filter((item): item is T => item !== null);
+  return value.map(map).filter((item): item is T => item !== null);
 }
 
 export function sanitizeImageReading(raw: unknown): ImageReading | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const source = raw as Record<string, unknown>;
+  // Refuse oversized answers rather than silently publishing a shortened reading.
+  if (JSON.stringify(raw).length > IMAGE_READING_MAX_TEXT) return null;
+  const limits: Record<string, Record<string, number>> = {
+    measurements: { name: 160, value: 40, unit: 40, referenceLow: 40, referenceHigh: 40 },
+    medications: { name: 160, dose: 40, unit: 40 },
+    visualFindings: { description: 600, region: 160 },
+  };
+  for (const field of ["lines", "measurements", "medications", "visualFindings"]) {
+    const values = source[field];
+    if (!Array.isArray(values)) continue;
+    if (values.length > IMAGE_READING_MAX_ROWS) return null;
+    for (const value of values) {
+      if (field === "lines" && String(value ?? "").replace(/\s+/g, " ").trim().length > 4000) return null;
+      if (value && typeof value === "object") {
+        for (const [key, limit] of Object.entries(limits[field] ?? {})) {
+          const item = (value as Record<string, unknown>)[key];
+          if ((typeof item === "string" || typeof item === "number") && String(item).replace(/\s+/g, " ").trim().length > limit) return null;
+        }
+      }
+    }
+  }
   const reading: ImageReading = {
+    visualFindings: rows(source.visualFindings, (item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const description = text(row.description, 600);
+      if (!description) return null;
+      return { description, region: text(row.region), confidence: row.confidence === "moderate" ? "moderate" as const : "low" as const, frame: Number.isInteger(row.frame) && Number(row.frame) >= 0 ? Number(row.frame) : null };
+    }),
     studyDate: /^\d{4}-\d{2}-\d{2}$/.test(text(source.studyDate, 10)) ? text(source.studyDate, 10) : "",
     lines: rows(source.lines, (item) => {
-      const line = text(item, 240);
+      const line = text(item, 4000);
       return line || null;
     }),
     measurements: rows(source.measurements, (item) => {
@@ -61,7 +93,7 @@ export function sanitizeImageReading(raw: unknown): ImageReading | null {
       return medication.name && medication.dose ? medication : null;
     }),
   };
-  const filled = reading.lines.length + reading.measurements.length + reading.medications.length;
+  const filled = reading.lines.length + reading.measurements.length + reading.medications.length + (reading.visualFindings?.length ?? 0);
   return filled > 0 || reading.studyDate ? reading : { ...EMPTY };
 }
 
@@ -70,7 +102,7 @@ export function readingLines(reading: ImageReading): string {
   if (reading.studyDate) lines.push(`Дата исследования: ${reading.studyDate}`);
   for (const line of reading.lines) lines.push(line);
   for (const item of reading.measurements) {
-    const range = item.referenceLow && item.referenceHigh ? ` ${item.referenceLow}-${item.referenceHigh}` : "";
+    const range = item.referenceLow && item.referenceHigh ? ` ${item.referenceLow}-${item.referenceHigh}` : item.referenceLow ? ` референс: >=${item.referenceLow}` : item.referenceHigh ? ` референс: <=${item.referenceHigh}` : "";
     lines.push(`${item.name} ${item.value} ${item.unit}${range}`.trim());
   }
   for (const item of reading.medications) lines.push(`${item.name} ${item.dose} ${item.unit}`.trim());
@@ -93,10 +125,12 @@ export function scrubReading(reading: ImageReading): { json: string; lines: stri
     dose: scrub(item.dose),
     unit: scrub(item.unit),
   }));
-  const leaked = [date, ...lines, ...measurements.flatMap((item) => Object.values(item)), ...medications.flatMap((item) => Object.values(item))].some(
+  const findings = (reading.visualFindings ?? []).map(item => ({ ...item, description: scrub(item.description), region: scrub(item.region) }));
+  const leaked = [date, ...lines, ...measurements.flatMap((item) => Object.values(item)), ...medications.flatMap((item) => Object.values(item)), ...findings.flatMap(item => [item.description, item.region])].some(
     (item) => item.leaked,
   );
   const clean: ImageReading = {
+    visualFindings: findings.map(item => ({ ...item, description: item.description.text, region: item.region.text })),
     studyDate: date.text,
     lines: lines.map((item) => item.text).filter(Boolean),
     measurements: measurements.map((item) => ({

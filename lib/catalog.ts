@@ -63,14 +63,16 @@ export type AxisStatus = "sufficient_data" | "partial_data" | "insufficient_data
 
 export function describeAxes(input: {
   facts: { concept: string; date?: string | null }[];
-  medications: unknown[];
+  medications: { date?: string | null }[];
   documents: { status: string; fileName?: string }[];
   issues: unknown[];
 }): { id: string; title: string; clusterId: string | null; status: AxisStatus }[] {
   const concepts = new Set(input.facts.map((fact) => fact.concept));
   return AXES.map((axis) => {
     if (axis.kind === "medications") {
-      return { id: axis.id, title: axis.title, clusterId: axis.clusterId, status: input.medications.length > 0 ? "sufficient_data" : "insufficient_data" };
+      const status: AxisStatus = input.medications.length === 0 ? "insufficient_data" :
+        axis.id === "dose_over_time" && input.medications.some(item => !item.date) ? "partial_data" : "sufficient_data";
+      return { id: axis.id, title: axis.title, clusterId: axis.clusterId, status };
     }
     if (axis.kind === "consistency") {
       const readable = input.documents.some((document) => document.status === "ready");

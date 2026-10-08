@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     const id = ownerId();
     const form = await request.formData();
     const files = form.getAll("files").filter((item): item is File => item instanceof File);
+    if (form.get("source") === "video_documents" && (files.length > 8 || files.some(file => file.type !== "image/jpeg" || file.size > 350000))) return Response.json({error:"Из видео можно отправить до 8 JPEG-кадров размером до 350 КБ каждый."},{status:400});
     if (files.length === 0) return Response.json({ error: "Файл не выбран." }, { status: 400 });
     const documents = await withOwner(id, async (state, dir) => {
       const saved = [];

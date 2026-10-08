@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DISCUSS_EVENT } from "@/lib/discuss";
-import type { ChatTurn } from "@/lib/types";
+import type { ChatMode, ChatTurn } from "@/lib/types";
 
 function readable(text: string): string {
   return text
@@ -17,32 +17,33 @@ export function ChatDock() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [messages, setMessages] = useState<ChatTurn[]>([]);
+  const [mode, setMode] = useState<ChatMode>("analysis");
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const thread = useRef<HTMLDivElement>(null);
-  const queue = useRef<{ text: string; restore: boolean }[]>([]);
+  const queue = useRef<{ text: string; restore: boolean; mode: ChatMode }[]>([]);
   const sending = useRef(false);
   const spoke = useRef(false);
 
-  const deliver = useCallback(async (message: string, restore: boolean) => {
+  const deliver = useCallback(async (message: string, restore: boolean, mode: ChatMode) => {
     const text = message.trim();
     if (!text) return;
     spoke.current = true;
     if (sending.current) {
-      queue.current.push({ text, restore });
+      queue.current.push({ text, restore, mode });
       return;
     }
     sending.current = true;
     setCollapsed(false);
     setPending(true);
     setError("");
-    setMessages((current) => [...current, { role: "user", text, at: new Date().toISOString() }]);
+    setMessages((current) => [...current, { role: "user", text, mode, at: new Date().toISOString() }]);
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, mode }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Не удалось ответить.");
@@ -54,14 +55,14 @@ export function ChatDock() {
       sending.current = false;
       setPending(false);
       const next = queue.current.shift();
-      if (next) void deliver(next.text, next.restore);
+      if (next) void deliver(next.text, next.restore, next.mode);
     }
   }, []);
 
   useEffect(() => {
     function onDiscuss(event: Event) {
       const message = (event as CustomEvent<string>).detail;
-      if (typeof message === "string") void deliver(message, false);
+      if (typeof message === "string") { setMode("analysis"); void deliver(message, false, "analysis"); }
     }
     window.addEventListener(DISCUSS_EVENT, onDiscuss);
     return () => window.removeEventListener(DISCUSS_EVENT, onDiscuss);
@@ -86,7 +87,7 @@ export function ChatDock() {
 
   useEffect(() => {
     thread.current?.scrollTo({ top: thread.current.scrollHeight });
-  }, [messages, pending, collapsed]);
+  }, [messages, pending, collapsed, mode]);
 
   if (pathname.startsWith("/phone") || pathname.startsWith("/review")) return null;
 
@@ -106,7 +107,7 @@ export function ChatDock() {
     const message = draft.trim();
     if (!message) return;
     setDraft("");
-    await deliver(message, true);
+    await deliver(message, true, mode);
   }
 
   return (
@@ -119,7 +120,7 @@ export function ChatDock() {
         </span>
         <div>
           <h2>Профессор</h2>
-          <p>Сюда можно отправить одну находку или весь разбор. Пояснение без диагноза и без лечения.</p>
+          <p>Обсуждение документов и общие вопросы с научными источниками.</p>
         </div>
         <div className="professor-actions">
           <button className="danger" type="button" onClick={() => void clearChat()} disabled={pending || messages.length === 0}>Очистить чат</button>
@@ -128,13 +129,18 @@ export function ChatDock() {
           </button>
         </div>
       </header>
+      <div className="professor-modes" role="group" aria-label="Режим разговора">
+        <button type="button" aria-pressed={mode === "analysis"} onClick={() => setMode("analysis")} disabled={pending}>По моим документам</button>
+        <button type="button" aria-pressed={mode === "general"} onClick={() => setMode("general")} disabled={pending}>Общий вопрос</button>
+      </div>
       <div className="chat-thread" ref={thread}>
-        {messages.length === 0 ? (
-          <p className="chat-answer">Здравствуйте. Одну строку отправляет кнопка «Профессору». Весь лист — кнопка «Весь разбор профессору». Я поясню, что уже записано, без диагноза и без лечения.</p>
+        {messages.filter(item => (item.mode ?? "analysis") === mode).length === 0 ? (
+          <p className="chat-answer">{mode === "general" ? "Можно задать общий вопрос. Медицинские документы и переписка по разбору в этот режим не передаются. Для медицинских вопросов ищем научные публикации." : "Обсудим находку или весь разбор, проверенные толкования и вопросы для врача."}</p>
         ) : null}
-        {messages.map((item) => (
+        {messages.filter(item => (item.mode ?? "analysis") === mode).map((item) => (
           <p key={`${item.at}-${item.role}-${item.text.slice(0, 24)}`} className={item.role === "user" ? "chat-user" : "chat-answer"}>
             {readable(item.text)}
+            {item.sources?.length ? <span className="chat-sources">Найденные публикации (не все обязательно использованы в ответе):{item.sources.map(source => <a key={source.pmid} href={source.url} target="_blank" rel="noopener noreferrer">{source.title} ({source.year}), PMID {source.pmid}</a>)}</span> : null}
           </p>
         ))}
         {pending ? <p className="quiet">Смотрим ваши сведения…</p> : null}
@@ -145,7 +151,7 @@ export function ChatDock() {
           value={draft}
           rows={3}
           maxLength={1500}
-          placeholder="Например: что видно по холестерину?"
+          placeholder={mode === "general" ? "Например: что показывает ферритин?" : "Что означают изменения в моём разборе?"}
           onChange={(event) => setDraft(event.target.value)}
         />
         <button type="submit" disabled={pending || !draft.trim()}>Спросить</button>

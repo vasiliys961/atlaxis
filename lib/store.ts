@@ -8,10 +8,15 @@ import { emptyState, type OwnerState } from "./types";
 const locks = new Map<string, Promise<unknown>>();
 
 function root(ownerId: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ownerId)) {
+    throw new Error("invalid_owner_id");
+  }
   return path.join(dataRoot(), ownerId);
 }
 
 export async function withOwner<T>(ownerId: string, task: (state: OwnerState, dir: string) => Promise<T>): Promise<T> {
+  // Validate identifiers before any filesystem or blob access.
+  root(ownerId);
   const previous = locks.get(ownerId) ?? Promise.resolve();
   const run = previous.then(async () => {
     const dir = root(ownerId);
@@ -20,9 +25,17 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
     let state = emptyState();
     try {
       const raw = await readText(stateKey);
-      if (!raw) throw new Error("empty");
-      const saved = JSON.parse(raw) as Partial<OwnerState>;
-      state = { ...emptyState(), ...saved };
+      if (raw === null) {
+        state = emptyState(); // New owner only; readText throws on actual I/O failures.
+      } else {
+        if (!raw.trim()) throw new Error("owner_state_corrupt");
+        const saved = JSON.parse(raw) as Partial<OwnerState>;
+        if (!saved || typeof saved !== "object" || Array.isArray(saved) ||
+          !["documents", "facts", "medications", "issues", "reports", "reviews", "jobs", "audit", "chat"].every(
+            key => (saved as Record<string, unknown>)[key] === undefined || Array.isArray((saved as Record<string, unknown>)[key])
+          )) throw new Error("owner_state_corrupt");
+        state = { ...emptyState(), ...saved };
+      }
       state.documents ??= [];
       state.facts ??= [];
       state.medications ??= [];
@@ -35,8 +48,9 @@ export async function withOwner<T>(ownerId: string, task: (state: OwnerState, di
       }
       state.audit ??= [];
       state.chat ??= [];
-    } catch {
-      state = emptyState();
+    } catch (error) {
+      // A failed read or invalid JSON must never be overwritten with an empty patient history.
+      throw error instanceof Error ? error : new Error("owner_state_unavailable");
     }
     const result = await task(state, dir);
     await writeText(stateKey, JSON.stringify(state));
