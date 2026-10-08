@@ -33,7 +33,7 @@ export function analyzeClinicalState(state: OwnerState): { axes: AxisResult[]; r
           if (new Set(sameDate.map(f => f.documentId)).size > 1) relations.push({ type: "same_measurement_different_document", explanation, sourceRefs: refs });
         }
       }
-      const dated = rows.filter(f => f.date && f.unit.trim() && Number.isFinite(f.value) && !byDate.get(f.date)?.some(other => other.id !== f.id && (other.value !== f.value || other.unit !== f.unit)));
+      const dated = rows.filter(f => f.date !== null && f.unit.trim() !== "" && Number.isFinite(f.value) && !byDate.get(f.date)?.some(other => other.id !== f.id && (other.value !== f.value || other.unit !== f.unit)));
       const units = new Set(dated.map(f => f.unit.trim().toLowerCase()));
       // Do not present a trend when the series contains incompatible units.
       const allUnits = new Set(rows.map(f => f.unit.trim().toLowerCase()));
