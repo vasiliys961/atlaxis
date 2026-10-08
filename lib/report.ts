@@ -49,7 +49,7 @@ export function buildRelationships(state: OwnerState): ReportBlock[] {
       body: relation.explanation,
       sources: relation.sourceRefs,
     })),
-    ...imagePeriodLinks(state),
+    // Temporal coincidence alone is not a clinical relationship.
   ];
 }
 
@@ -440,6 +440,8 @@ export function buildReport(state: OwnerState): ReportView {
     };
   }
 
+  // Classify a detached snapshot so report generation never mutates source facts.
+  state = { ...state, facts: state.facts.map(fact => ({ ...fact })) };
   classifyFacts(state);
   const clinical = analyzeClinicalState(state);
   const themes: ReportBlock[] = [];
