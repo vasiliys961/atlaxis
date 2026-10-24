@@ -6,6 +6,7 @@ import { buildReport } from "./report";
 import { lunaPrompt, readLuna, routeQuestion, SAFETY_MEDS, SAFETY_URGENT } from "./router";
 import type { ChatTurn, OwnerState, ReportView } from "./types";
 import { acceptWording } from "./wording";
+import { productGuide } from "./product-guide";
 
 export const EXPLAIN_SYSTEM = `Ты отвечаешь с компетенцией профессора медицины из Doctor Opus: доказательная медицина, точная структура, сначала прямой ответ, затем плотное разъяснение терминов простым языком.
 
@@ -76,6 +77,8 @@ async function explain(state: OwnerState, question: string): Promise<string> {
   const route = routeQuestion(question);
   if (route === "safety_meds") return SAFETY_MEDS;
   if (route === "safety_urgent") return SAFETY_URGENT;
+  const guide = productGuide(question);
+  if (guide) return guide;
   const decision = decideProcessing({
     operation: "narrate",
     kind: "structured_text",

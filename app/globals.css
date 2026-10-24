@@ -155,6 +155,17 @@ input, textarea, select { width: 100%; margin-top: 6px; border: 1px solid var(--
 .chat-answer { background: #f6f1e8; border-radius: 16px 16px 16px 6px; }
 .chat-form { display: grid; gap: 8px; }
 .chat-form textarea { resize: none; }
+.professor-voice { flex: 0 0 auto; margin-top: 10px; }
+.professor-voice video { display: block; width: 100%; height: 180px; object-fit: contain; background: #f4f4f0; border-radius: 16px; }
+.professor-voice video[hidden] { display: none; }
+.voice-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.professor-voice .quiet, .chat-form .quiet { font-size: 11px; line-height: 1.35; margin: 5px 0; }
+.chat-thread { min-height: 70px; }
+.professor { overflow-y: auto; }
+.professor-conversation .quiet { font-size: 11px; line-height: 1.35; margin: 5px 0; }
+.professor-conversation { margin-top: 8px; flex-shrink: 0; }
+.professor header { grid-template-columns: auto 1fr; }
+.professor-actions { grid-column: 1 / -1; }
 .professor.collapsed { height: auto; width: auto; padding: 8px; }
 .professor.collapsed .chat-thread, .professor.collapsed .chat-form, .professor.collapsed header p, .professor.collapsed h2 { display: none; }
 .site-footer { width: min(1160px, calc(100% - 40px)); margin: 10px auto 0; padding: 22px 0 36px; color: #2f3d36; font-size: 13px; display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid rgba(255,255,255,.35); }

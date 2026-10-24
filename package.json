@@ -6,10 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --import tsx --test lib/pipeline.test.ts lib/cases.test.ts",
+    "test": "node --import tsx --test lib/pipeline.test.ts lib/cases.test.ts lib/product-guide.test.ts lib/professor-realtime.test.ts",
     "mcp:doctor-opus": "node --import tsx mcp/doctor-opus/server.ts"
   },
   "dependencies": {
+    "@d-id/client-sdk": "^3.0.8",
     "@vercel/blob": "^2.8.0",
     "@vercel/functions": "^3.9.11",
     "heic-convert": "^2.1.0",

@@ -4,6 +4,9 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DISCUSS_EVENT } from "@/lib/discuss";
 import type { ChatTurn } from "@/lib/types";
+import { ProfessorVoice, type ProfessorSpeaker } from "./ProfessorVoice";
+import { VoiceInput } from "./VoiceInput";
+import { ProfessorConversation } from "./ProfessorConversation";
 
 function readable(text: string): string {
   return text
@@ -24,6 +27,7 @@ export function ChatDock() {
   const queue = useRef<{ text: string; restore: boolean }[]>([]);
   const sending = useRef(false);
   const spoke = useRef(false);
+  const speaker = useRef<ProfessorSpeaker>(null);
 
   const deliver = useCallback(async (message: string, restore: boolean) => {
     const text = message.trim();
@@ -37,6 +41,7 @@ export function ChatDock() {
     setCollapsed(false);
     setPending(true);
     setError("");
+    speaker.current?.stop();
     setMessages((current) => [...current, { role: "user", text, at: new Date().toISOString() }]);
     try {
       const response = await fetch("/api/chat", {
@@ -47,6 +52,8 @@ export function ChatDock() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Не удалось ответить.");
       setMessages(body.messages as ChatTurn[]);
+      const last = (body.messages as ChatTurn[]).at(-1);
+      if (last?.role === "assistant" && queue.current.length === 0) speaker.current?.speak(last.text);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось ответить.");
       if (restore) setDraft(text);
@@ -91,6 +98,7 @@ export function ChatDock() {
   if (pathname.startsWith("/phone") || pathname.startsWith("/review")) return null;
 
   async function clearChat() {
+    speaker.current?.stop();
     setError("");
     const response = await fetch("/api/chat", { method: "DELETE" });
     const body = await response.json();
@@ -119,7 +127,7 @@ export function ChatDock() {
         </span>
         <div>
           <h2>Профессор</h2>
-          <p>Сюда можно отправить одну находку или весь разбор. Пояснение без диагноза и без лечения.</p>
+          <p>Цифровой консультант Атлаксиса: помощь с приложением и пояснение разбора без диагноза и лечения.</p>
         </div>
         <div className="professor-actions">
           <button className="danger" type="button" onClick={() => void clearChat()} disabled={pending || messages.length === 0}>Очистить чат</button>
@@ -128,9 +136,17 @@ export function ChatDock() {
           </button>
         </div>
       </header>
+      {!collapsed ? <>
+        <ProfessorVoice ref={speaker} />
+        <ProfessorConversation
+          onQuestion={text => void deliver(text, false)}
+          onSpeech={() => speaker.current?.stop()}
+          onEnableAudio={() => speaker.current?.enableAudio()}
+        />
+      </> : null}
       <div className="chat-thread" ref={thread}>
         {messages.length === 0 ? (
-          <p className="chat-answer">Здравствуйте. Одну строку отправляет кнопка «Профессору». Весь лист — кнопка «Весь разбор профессору». Я поясню, что уже записано, без диагноза и без лечения.</p>
+          <p className="chat-answer">Здравствуйте! Я — Профессор, цифровой помощник Атлаксиса. Объясню, как загрузить документы и пользоваться разбором. Кнопка «Профессору» отправляет одну находку, «Весь разбор профессору» — весь лист.</p>
         ) : null}
         {messages.map((item) => (
           <p key={`${item.at}-${item.role}-${item.text.slice(0, 24)}`} className={item.role === "user" ? "chat-user" : "chat-answer"}>
@@ -141,10 +157,12 @@ export function ChatDock() {
         {error ? <p className="error">{error}</p> : null}
       </div>
       <form className="chat-form" onSubmit={send}>
+        <VoiceInput onText={setDraft} disabled={pending} />
         <textarea
           value={draft}
           rows={3}
           maxLength={1500}
+          aria-label="Вопрос Профессору"
           placeholder="Например: что видно по холестерину?"
           onChange={(event) => setDraft(event.target.value)}
         />
