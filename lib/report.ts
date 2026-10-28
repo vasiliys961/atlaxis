@@ -1,3 +1,5 @@
+import { readingForSheet } from "./document-reading";
+import { buildAdvisory } from "./advisory";
 import { instrumentStudies } from "./instrument-studies";
 import { measurementHistory } from "./measurement-history";
 import { extractionIssue } from "./document-issues";
@@ -108,14 +110,22 @@ function formatFact(fact: MedicalFact): string {
     fact.referenceLow != null && fact.referenceHigh != null
       ? `, референс бланка ${fact.referenceLow}–${fact.referenceHigh}`
       : "";
-  const original = fact.excerpt ? `. В документе: «${fact.excerpt}»` : "";
+  const original = fact.excerpt ? ` В документе: «${fact.excerpt}».` : "";
   const mark =
     fact.status === "conflicting"
       ? " Запись спорная: число оставлено как в строке."
       : fact.status === "uncertain"
         ? fact.date ? " Единица в строке не указана." : " Дата в документе не указана."
         : "";
-  return `${fact.label} ${fact.valueText} ${fact.unit}${when}${range}${original}${mark}`.replace(/[ \t]+/g, " ").trim();
+  const comparison =
+    fact.referenceLow != null && fact.value < fact.referenceLow
+      ? " По диапазону этого бланка значение ниже нижней границы."
+      : fact.referenceHigh != null && fact.value > fact.referenceHigh
+        ? " По диапазону этого бланка значение выше верхней границы."
+        : fact.referenceLow != null || fact.referenceHigh != null
+          ? " Значение находится в указанном на бланке диапазоне."
+          : " На бланке рядом нет числового референса.";
+  return `${fact.label} ${fact.valueText} ${fact.unit}${when}${range}.${comparison}${original}${mark}`.replace(/[ \t]+/g, " ").trim();
 }
 
 function classifyFacts(state: OwnerState): void {
@@ -151,13 +161,20 @@ function classifyFacts(state: OwnerState): void {
 
 function physicianQuestions(conflicts: ReportBlock[], gaps: string[]): string[] {
   const questions: string[] = [];
-  for (const block of conflicts.slice(0, 3)) {
+  const seen = new Set<string>();
+  const push = (text: string) => {
+    const key = text.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    questions.push(text);
+  };
+  for (const block of conflicts) {
+    if (/инструкц\p{L}*\s+систем/iu.test(block.body)) continue;
     const clause = block.body.split(". ")[0]?.replace(/\.$/, "") ?? block.body;
-    questions.push(`Вопрос врачу: ${clause}. Какую запись считать рабочей?`);
+    push(`Вопрос врачу: ${clause}. Какую запись считать рабочей?`);
+    if (questions.length === 3) break;
   }
-  for (const gap of gaps.slice(0, 2)) {
-    questions.push(`Вопрос врачу: ${gap} Это пробел комплекта, не задание на обследование.`);
-  }
+  for (const gap of gaps.slice(0, 2)) push(`Вопрос врачу: ${gap} Это пробел комплекта, не задание на обследование.`);
   return questions;
 }
 
@@ -265,6 +282,12 @@ export function buildReport(state: OwnerState): ReportView {
   const imageReadings = state.documents
     .filter((item) => item.anonymizedText.trim().startsWith("{"))
     .map((item) => ({ name: item.fileName, json: item.anonymizedText }));
+  const readings = state.documents.flatMap((item) => {
+    if (identityLeft(item.anonymizedText)) return [];
+    const text = readingForSheet(item.anonymizedText);
+    return text ? [{ id: item.id, name: item.fileName, text }] : [];
+  });
+  const advisory = buildAdvisory(state);
 
   const pictures = state.documents.filter((item) => /\.(png|jpe?g|webp)$/i.test(item.fileName) && item.status === "anonymization_unconfirmed");
 
@@ -291,9 +314,11 @@ export function buildReport(state: OwnerState): ReportView {
       cannotSay: state.documents.length === 0 ? [] : ["Этот разбор не подтверждает диагноз и не определяет персональную схему лечения."],
       limits,
       imageReadings,
+      readings,
       imagingStudies,
       instrumentStudies: instrumentStudies(state),
       timeline: [],
+      advisory,
     };
   }
 
@@ -308,7 +333,6 @@ export function buildReport(state: OwnerState): ReportView {
     const facts = state.facts.filter((fact) => axis.concepts.includes(fact.concept));
     const requiredMet = axis.required.every((concept) => facts.some((fact) => fact.concept === concept));
     if (facts.length === 0) {
-      if (!axis.quietWhenEmpty && axis.gap) gaps.push(`Ось «${axis.title}»: ${axis.gap}`);
       continue;
     }
     if (!requiredMet) gaps.push(`Для темы «${axis.title}» основной показатель в документах не найден.`);
@@ -388,17 +412,31 @@ export function buildReport(state: OwnerState): ReportView {
     cannotSay,
     limits,
     imageReadings,
+    readings,
     imagingStudies,
     instrumentStudies: instrumentStudies(state),
     timeline: buildTimeline(state),
     axisResults,
     measurementHistory: measurementHistory(state),
     extractionProblems,
+    advisory,
   };
   return validateReport(report, state);
 }
 
 const FORBIDDEN = /назначьте|следует назначить|отмените|диагноз\s*:|сдайте|вам необходимо/i;
+
+function sameNumber(allowed: Set<string>, raw: string): boolean {
+  const shown = raw.replace(",", ".");
+  if (allowed.has(shown) || allowed.has(raw)) return true;
+  const value = Number(shown);
+  if (!Number.isFinite(value)) return false;
+  for (const item of allowed) {
+    const other = Number(item.replace(",", "."));
+    if (Number.isFinite(other) && other === value) return true;
+  }
+  return false;
+}
 
 export function validateReport(report: ReportView, state: OwnerState): ReportView {
   const reasons: string[] = [];
@@ -421,8 +459,8 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
 
   const allowedDoses = new Set(state.medications.map((item) => item.doseText));
   for (const match of prose.matchAll(/(\d+(?:[.,]\d+)?)\s*(мг|мкг)(?![\p{L}\p{N}])/giu)) {
-    const dose = match[1]?.replace(",", ".");
-    if (dose && !allowedDoses.has(dose)) reasons.push("В тексте есть доза, которой нет в документах.");
+    const dose = match[1] ?? "";
+    if (dose && !sameNumber(allowedDoses, dose)) reasons.push("В тексте есть доза, которой нет в документах.");
   }
 
   const catalog = guidelinesFor(report.region);
@@ -457,8 +495,8 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
   ].join("\n");
   const withoutDates = clinical.replace(/\d{4}-\d{2}-\d{2}/g, " ");
   for (const match of withoutDates.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:ммоль\/л|г\/л|мм|Ед\/л|мг|мкг)/giu)) {
-    const value = match[1]?.replace(",", ".");
-    if (value && !allowed.has(value) && !allowed.has(match[1] ?? "")) reasons.push("В тексте есть число, которого нет в документах.");
+    const value = match[1] ?? "";
+    if (value && !sameNumber(allowed, value)) reasons.push("В тексте есть число, которого нет в документах.");
   }
   for (const issue of state.issues) {
     const shown = extractionIssue(issue) ? report.extractionProblems?.some(block => block.sources.some(source => source.documentId === issue.documentId && source.line === issue.line)) : report.conflicts.some((block) => block.body.includes(issue.description.slice(0, 24)));
@@ -475,7 +513,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     status: "blocked",
     blockReasons: [...new Set(reasons)],
     headline: "Отчёт не прошёл проверку",
-    intro: "Проверка остановила текст до выдачи.",
+    intro: "Проверка остановила сводку. Прочитанный текст файлов остаётся ниже.",
     themes: [],
     changes: [],
     conflicts: [],
@@ -486,6 +524,7 @@ export function validateReport(report: ReportView, state: OwnerState): ReportVie
     timeline: [],
     guidelineNote: "",
     imageReadings: [],
+    readings: confirmed.some((item) => identityLeft(item.anonymizedText)) ? [] : report.readings,
     wording: [],
   };
 }

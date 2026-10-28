@@ -1,5 +1,3 @@
-import { guidelineSentence } from "./guidelines";
-import { RU_NOT_FOUND, SEARCH_SCOPE, settleSearch, searchGuidelines, sonarFoundRussian } from "./guidelines-search";
 import { newId } from "./parse";
 import { polzaKey } from "./polza";
 import { buildReport } from "./report";
@@ -26,16 +24,10 @@ export async function publishReport(state: OwnerState, force = false): Promise<R
   const same = previous?.inputHash === report.inputHash;
   if (same && previous && !force) return previous;
   const canAsk = Boolean(report.modelsReady && report.status === "ready" && state.documents.some((item) => item.status === "ready"));
-  const savedSearch = same ? previous?.guidelineSearch : undefined;
-  const reuseSearch = Boolean(
-    savedSearch?.includes(SEARCH_SCOPE)
-    && (report.region !== "RU" || sonarFoundRussian(savedSearch) || savedSearch.includes(RU_NOT_FOUND)),
-  );
-  const guidelineSearch = reuseSearch ? savedSearch ?? null : canAsk ? await searchGuidelines(state) : null;
-  if (guidelineSearch) report.guidelineSearch = guidelineSearch;
-  if (canAsk && !report.guidelineSearch) report.guidelineSearch = settleSearch(report.region === "RU" ? RU_NOT_FOUND : "Поиск источников недоступен.", report.region);
-  if (canAsk) report.clinicalSynthesis = await synthesizeClinicalState(state, undefined, report.guidelineSearch);
-  report.guidelineNote = guidelineSentence(report.region, report.guidelineSearch);
+  report.guidelineSearch = undefined;
+  report.guidelineNote = "";
+  report.catalog = [];
+  if (canAsk) report.clinicalSynthesis = await synthesizeClinicalState(state);
   state.report = report;
   const last = state.reports[state.reports.length - 1];
   if (!last || last.inputHash !== report.inputHash) {

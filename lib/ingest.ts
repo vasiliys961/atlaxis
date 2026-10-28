@@ -5,13 +5,14 @@ import { anonymizeText } from "./anonymize";
 import { extractDocxText, looksLikeDocx, looksLikeLegacyDoc } from "./docx";
 import { heicToJpeg, isHeicContainer, jpegName } from "./heic";
 import { reconcileLabReading } from "./lab-reading";
-import { scrubReading } from "./image-json";
+import { mergeReadings, scrubReading, type ImageReading } from "./image-json";
 import { extractPdfText } from "./pdf";
+import { renderPdfPages } from "./pdf-pages";
 import { extractSpreadsheet } from "./spreadsheet";
 import { extractDicom } from "./dicom";
 import { renderDicomFrames } from "./dicom-pixels";
 import { decideProcessing } from "./policy";
-import { polzaKey, readImageJson, readImageFrames } from "./polza";
+import { polzaKey, readImageFrames, readImageJson } from "./polza";
 import { contentHash, newId, parseDocument } from "./parse";
 import { PIPELINE_VERSION, type MedicalDocument, type OwnerState } from "./types";
 
@@ -79,10 +80,84 @@ function refused(state: OwnerState, name: string, payload: Buffer, note: string,
   return failed;
 }
 
+const VIDEO_EXT = new Set(["mp4", "mov", "webm", "m4v"]);
+
 function dropDerivatives(state: OwnerState, documentId: string): void {
   state.facts = state.facts.filter((item) => item.documentId !== documentId);
   state.medications = state.medications.filter((item) => item.documentId !== documentId);
   state.issues = state.issues.filter((item) => item.documentId !== documentId);
+}
+
+function readingFilled(reading: ImageReading): boolean {
+  return Boolean(reading.lines.length || reading.measurements.length || reading.medications.length || (reading.visualFindings?.length ?? 0) || reading.studyDate);
+}
+
+function imageReadFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "polza_failed") return "Сервис чтения снимка не ответил. Строки не выдуманы.";
+  if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) return "Чтение снимка оборвалось по времени. Строки не выдуманы.";
+  return "Снимок отправлен на чтение, но ответ не удалось разобрать. Строки не выдуманы.";
+}
+
+function imageNote(reading: ImageReading): string {
+  if (!readingFilled(reading)) return "На снимке не нашлось видимого текста. Строки не выдуманы.";
+  return "Прочитан весь видимый текст. В сводке — показатели словаря, остальные строки сохранены целиком. Наблюдения на снимке не подтверждают диагноз.";
+}
+
+function storeReading(state: OwnerState, document: MedicalDocument, reading: ImageReading, note: string, frames: number, visual: boolean): boolean {
+  const scrubbed = scrubReading(reading);
+  if (scrubbed.leaked) return false;
+  const clean = JSON.parse(scrubbed.json) as ImageReading;
+  const parsed = reconcileLabReading(clean);
+  document.status = "ready";
+  document.statusLabel = "Готово";
+  document.note = note;
+  document.studyDate = parsed.studyDate;
+  document.anonymizedText = scrubbed.json;
+  if (visual || (clean.visualFindings?.length ?? 0) > 0) {
+    document.visualAnalysis = {
+      status: "ready",
+      totalFrames: Math.max(1, frames),
+      analyzedFrames: Array.from({ length: Math.max(1, frames) }, (_, index) => index),
+      coverage: "complete",
+      limitations: ["Визуальные наблюдения требуют проверки специалистом и не заменяют описание врача."],
+      findings: clean.visualFindings ?? [],
+    };
+  }
+  for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: document.id });
+  for (const medication of parsed.medications) state.medications.push({ ...medication, id: newId(), documentId: document.id });
+  for (const issue of parsed.issues) state.issues.push({ ...issue, id: newId(), documentId: document.id });
+  state.report = null;
+  return true;
+}
+
+async function readScannedPdf(bytes: Buffer): Promise<{ reading: ImageReading | null; note: string; pages: number } | null> {
+  let rendered: Awaited<ReturnType<typeof renderPdfPages>>;
+  try {
+    rendered = await renderPdfPages(bytes);
+  } catch {
+    return null;
+  }
+  if (!rendered.pages.length) return null;
+  if (!polzaKey()) {
+    return { reading: null, note: "В файле нет текстового слоя. Чтение страниц не запущено: нет ключа модели.", pages: 0 };
+  }
+  const parts: ImageReading[] = [];
+  for (let index = 0; index < rendered.pages.length; index += 2) {
+    const chunk = rendered.pages.slice(index, index + 2);
+    const reading = await readImageFrames(chunk).catch(() => null);
+    if (!reading || !readingFilled(reading)) continue;
+    parts.push(rendered.pages.length > 1 ? { ...reading, lines: [`Страница ${chunk[0]!.index + 1}`, ...reading.lines] } : reading);
+  }
+  if (!parts.length) {
+    return { reading: null, note: "Страницы открыты, но текст из ответа не принят. Строки не выдуманы.", pages: rendered.pages.length };
+  }
+  const reading = mergeReadings(parts);
+  const clipped = rendered.totalPages > rendered.pages.length;
+  const note = clipped
+    ? `Прочитаны первые ${rendered.pages.length} из ${rendered.totalPages} страниц. Весь видимый текст сохранён, сводка берёт показатели словаря.`
+    : "Страницы прочитаны целиком. Весь видимый текст сохранён, сводка берёт показатели словаря.";
+  return { reading, note, pages: rendered.pages.length };
 }
 
 export async function stageFile(
@@ -153,6 +228,10 @@ async function acceptFile(
     createdAt: new Date().toISOString(),
   };
 
+  if (VIDEO_EXT.has(ext)) {
+    return refused(state, name, payload, "Видео не отправляется файлом. В блоке «Документы одним видео» выберите кадры листов: с каждого читается весь видимый текст.", base);
+  }
+
   if (!allowed || payload.length === 0 || payload.length > MAX_BYTES || !looksLike(payload, ext)) {
     const note = looksLikeLegacyDoc(payload)
       ? "Старый файл Word .doc не читается. Сохраните его как .docx — тогда текст войдёт в разбор."
@@ -221,28 +300,18 @@ export async function settleDocument(
       const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
       try {
         const reading = await readImageJson(bytes, mime);
-        if (reading) {
-          const scrubbed = scrubReading(reading);
-          if (!scrubbed.leaked) {
-            const parsed = reconcileLabReading(JSON.parse(scrubbed.json));
-            document.status = "ready";
-            document.statusLabel = "Готово";
-            document.note = scrubbed.lines.trim()
-              ? "Снимок прочитан. В разбор попали только строки, которые совпали со словарём показателей."
-              : "На снимке не нашлось видимого текста. Числа с него в разбор не вошли.";
-            document.studyDate = parsed.studyDate;
-            document.anonymizedText = scrubbed.json;
-            document.visualAnalysis = { status: "ready", totalFrames: 1, analyzedFrames: [0], coverage: "complete", limitations: ["Один кадр не заменяет полное исследование; визуальные наблюдения ИИ требуют проверки специалистом."], findings: (JSON.parse(scrubbed.json) as typeof reading).visualFindings ?? [] };
-            document.note = "Из изображения извлечены видимый текст, измерения и предварительные визуальные наблюдения. Полное исследование и диагноз ими не подтверждаются.";
-            for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });
-            for (const medication of parsed.medications) state.medications.push({ ...medication, id: newId(), documentId: id });
-            for (const issue of parsed.issues) state.issues.push({ ...issue, id: newId(), documentId: id });
-            state.report = null;
-            return document;
-          }
-        }
-      } catch {
-        // Снимок остаётся в списке без измерений, если JSON не получен.
+        if (reading && storeReading(state, document, reading, imageNote(reading), 1, true)) return document;
+        document.status = "anonymization_unconfirmed";
+        document.statusLabel = "Снимок сохранён отдельно";
+        document.note = "Снимок отправлен на чтение, но в ответе не нашлось текста бланка. Строки не выдуманы.";
+        state.report = null;
+        return document;
+      } catch (error) {
+        document.status = "anonymization_unconfirmed";
+        document.statusLabel = "Снимок сохранён отдельно";
+        document.note = imageReadFailure(error);
+        state.report = null;
+        return document;
       }
     }
     const picture = IMAGE_EXT.has(ext);
@@ -275,9 +344,18 @@ export async function settleDocument(
       decoded = "";
     }
     if (!decoded.trim()) {
+      const scanned = await readScannedPdf(bytes);
+      if (scanned?.reading) {
+        if (storeReading(state, document, scanned.reading, scanned.note, scanned.pages, false)) return document;
+        document.status = "failed";
+        document.statusLabel = "Не удалось разобрать";
+        document.note = "После удаления персональных данных на страницах остались контакт или документ. Файл в разбор не вошёл.";
+        state.report = null;
+        return document;
+      }
       document.status = "anonymization_unconfirmed";
       document.statusLabel = "PDF сохранён отдельно";
-      document.note = "В файле не нашлось текстового слоя. Строки не выдуманы, в разбор он не вошёл.";
+      document.note = scanned?.note ?? "В файле не нашлось текстового слоя, и страницы не удалось прочитать. Строки не выдуманы.";
       state.report = null;
       return document;
     }
@@ -322,7 +400,7 @@ export async function settleDocument(
   const parsed = parseDocument(anonymized.text);
   document.status = "ready";
   document.statusLabel = "Готово";
-  document.note = parsed.facts.length > 0 ? "Текст прочитан, персональные данные в нём скрыты." : "Текст прочитан. Измерений в нём не найдено.";
+  document.note = parsed.facts.length > 0 ? "Текст прочитан целиком, персональные данные в нём скрыты." : "Текст прочитан целиком. Отдельных показателей словаря в нём не найдено, строки сохранены.";
   document.studyDate = parsed.studyDate;
   document.anonymizedText = anonymized.text;
   for (const fact of parsed.facts) state.facts.push({ ...fact, id: newId(), documentId: id });

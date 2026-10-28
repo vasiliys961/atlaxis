@@ -4,23 +4,16 @@ import { VideoDocuments } from "@/components/VideoDocuments";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { patientFileNote } from "@/lib/patient-note";
-import type { MedicalDocument, Region, ReportView } from "@/lib/types";
+import type { MedicalDocument, ReportView } from "@/lib/types";
 
 type ListedDocument = Omit<MedicalDocument, "anonymizedText"> & {
   factCount: number;
   issueCount: number;
 };
 
-const REGIONS: { id: Region; label: string; hint: string }[] = [
-  { id: "RU", label: "Россия", hint: "Основные источники РФ; США и Европа для отдельного сопоставления. Актуальность и применимость требуют проверки." },
-  { id: "EU", label: "Европа", hint: "Основные европейские источники. Популяционный критерий не становится личной лечебной целью." },
-  { id: "US", label: "США", hint: "Основные американские источники. Актуальность редакции требует проверки." },
-];
-
 export default function DocumentsPage() {
   const [documents, setDocuments] = useState<ListedDocument[]>([]);
   const [report, setReport] = useState<ReportView | null>(null);
-  const [region, setRegion] = useState<Region>("RU");
   const [error, setError] = useState("");
   const [pending, setPending] = useState<"upload" | "delete" | "generate" | null>(null);
   const [dropping, setDropping] = useState<string | null>(null);
@@ -42,7 +35,6 @@ export default function DocumentsPage() {
     }
     setDocuments(body.documents ?? []);
     setReport(body.report ?? null);
-    setRegion(body.region ?? "RU");
     setWaiting(Boolean(body.pending));
   }
 
@@ -100,20 +92,6 @@ export default function DocumentsPage() {
     catch(reason){setError(reason instanceof Error ? reason.message : "Не удалось обновить разбор.");} finally {setPending(null);}
   }
 
-  async function chooseRegion(next: Region) {
-    setRegion(next);
-    const response = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ region: next }),
-    });
-    if (!response.ok) {
-      setError("Не удалось сохранить страну рекомендаций.");
-      return;
-    }
-    await load();
-  }
-
   async function openPhone() {
     setPhoneOpen(true);
     setPhoneQr("");
@@ -147,6 +125,19 @@ export default function DocumentsPage() {
     await load();
   }
 
+  async function retryDocument(id: string) {
+    setDropping(id);
+    setError("");
+    const response = await fetch(`/api/documents/${id}/process`, { method: "POST" });
+    const body = await response.json();
+    setDropping(null);
+    if (!response.ok) {
+      setError(body.error ?? "Не удалось повторить чтение файла.");
+      return;
+    }
+    await load();
+  }
+
   async function removeAll() {
     setPending("delete");
     setError("");
@@ -161,7 +152,6 @@ export default function DocumentsPage() {
     setReport(null);
   }
 
-  const hint = REGIONS.find((item) => item.id === region)?.hint ?? "";
   const ready = documents.some((document) => document.status === "ready");
 
   return (
@@ -195,7 +185,7 @@ export default function DocumentsPage() {
         >
           <div>
             <h2>{pending === "upload" ? "Принимаем файлы…" : waiting ? (documents.some((item) => item.statusLabel === "Разбирается") ? "Файлы разбираются" : "Файлы проверяются") : "Перетащите сюда или выберите файлы"}</h2>
-            <p className="quiet">Текст, PDF, Word, снимок. Снимок с iPhone сохраняется как JPEG. Персональные данные в тексте скрываются до разбора.</p>
+            <p className="quiet">Текст, PDF, Word, снимок или видео. Скан без текстового слоя тоже читается. Персональные данные в тексте скрываются до разбора.</p>
           </div>
           <label className="button">
             {pending === "upload" ? "Подождите" : "Выбрать файлы"}
@@ -209,6 +199,11 @@ export default function DocumentsPage() {
                 <span className="name">{document.fileName}</span>
                 <span className="quiet">{document.studyDate ? `${document.studyDate}. ` : ""}{document.factCount > 0 ? `${document.factCount} изм.` : patientFileNote(document.note)}</span>
                 <span className={document.status === "ready" ? "pill" : "pill wait"}>{document.statusLabel}</span>
+                {document.status === "anonymization_unconfirmed" ? (
+                  <button className="secondary file-drop" type="button" onClick={() => void retryDocument(document.id)} disabled={dropping !== null || pending !== null}>
+                    {dropping === document.id ? "Читаем…" : "Прочитать снова"}
+                  </button>
+                ) : null}
                 <button className="danger file-drop" type="button" onClick={() => void removeDocument(document.id)} disabled={dropping !== null || pending !== null}>
                   {dropping === document.id ? "Удаляем…" : "Удалить"}
                 </button>
@@ -232,10 +227,10 @@ export default function DocumentsPage() {
             <p className="kicker">Для пациента</p>
             <h2 id="guide-title">Как пользоваться</h2>
             <div className="quiet stack">
-              <p>Загрузите бланки и выписки текстом, PDF или Word (.docx). Из них читаются показатели, даты и дозы, которые написаны в файле.</p>
+              <p>Загрузите бланки и выписки текстом, PDF, Word (.docx), снимком или видео. Читается весь видимый текст: показатели, даты, дозы, заключения и остальные строки.</p>
               <p>Готовый снимок — кнопка «PNG или JPEG»: файл, который уже лежит на компьютере. Снимок с iPhone в HEIC сохраняется как JPEG.</p>
               <p>Со смартфона — кнопка показывает QR-код. Наведите камеру телефона: можно снять снимок или выбрать готовый файл. HEIC с iPhone сохраняется как JPEG и попадает в этот же разбор.</p>
-              <p>Снимок читается в показатели, которые совпали со словарём. Если текст на изображении не принят, числа с него в разбор не входят.</p>
+              <p>PDF без текстового слоя читается по страницам. Видео остаётся на устройстве: в блоке ниже выберите кадры листов, с каждого читается весь текст. Словарь собирает сводку и динамику и не выбрасывает остальные строки.</p>
               <p>Разбор объединяет записи, динамику, объяснения и вопросы врачу. Диагнозы и назначения из выписки объясняются как записи автора документа.</p>
               <p>У каждой находки есть кнопка «Профессору»: она отправляет одну строку. «Весь разбор профессору» в начале листа отправляет комплект целиком. Профессор объясняет проверенную комплексную интерпретацию и помогает подготовить вопросы врачу.</p>
               <p>У каждого файла своя кнопка «Удалить». Остальные файлы остаются. «Удалить мои данные» стирает весь комплект и спрашивает ещё раз.</p>
@@ -277,18 +272,7 @@ export default function DocumentsPage() {
         <article className="card step"><span className="n">03</span><b>Не заменяет врача</b><span className="quiet">Объяснения и вопросы помогают обсудить сведения с врачом; сервис не устанавливает диагноз и не назначает лечение.</span></article>
       </div>
 
-      <div className="grid2">
-        <aside className="card">
-          <h3>Страна рекомендаций</h3>
-          <div className="choice-list">
-            {REGIONS.map((item) => (
-              <button key={item.id} type="button" className={item.id === region ? "choice selected" : "choice"} onClick={() => void chooseRegion(item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </div>
-          <p className="quiet hint">{hint}</p>
-        </aside>
+      <div>
         <section className="card">
           <p className="lead">Ваши данные — только ваши. Персональные данные скрываются до разбора, а удалить всё можно одним нажатием.</p>
           <div className="actions">

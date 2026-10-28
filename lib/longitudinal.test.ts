@@ -125,6 +125,27 @@ test("missing medication chronology is partial and visible in gaps", () => {
   assert.match(report.gaps.join(" "), /суточная доза не определяется/);
 });
 
+test("bilirubin fractions stay separate from urine glucose and sediment", () => {
+  const parsed = parseDocument([
+    "Глюкоза 0.0 ммоль/л < 0.8",
+    "Лейкоциты 0-1 клеток/ПЗ 0-5",
+    "Глюкоза А09.05.023 (Приказ МЗ РФ № 804н) 4.40 ммоль/л 4.11 - 6.1",
+    "Билирубин общий 26.4+ мкмоль/л < 21",
+    "Билирубин прямой 8.2+ мкмоль/л < 5",
+    "Билирубин непрямой 21.0 мкмоль/л * <19.0",
+  ].join("\n"));
+  const fact = (concept: string) => parsed.facts.find((item) => item.concept === concept);
+  assert.equal(fact("GLU")?.value, 4.4);
+  assert.equal(fact("GLU")?.referenceLow, 4.11);
+  assert.equal(fact("BILI")?.value, 26.4);
+  assert.equal(fact("BILI")?.referenceHigh, 21);
+  assert.equal(fact("BILI_D")?.value, 8.2);
+  assert.equal(fact("BILI_D")?.referenceHigh, 5);
+  assert.equal(fact("BILI_I")?.value, 21);
+  assert.equal(fact("BILI_I")?.referenceHigh, 19);
+  assert.equal(parsed.facts.some((item) => item.concept === "WBC"), false);
+});
+
 test("blood count powers in units are never extracted as measured values", () => {
   const parsed = parseDocument("Дата исследования: 2024-01-01\nWBC 5.8 10^9/л 4-10\nPLT 250 10^9/л 150-400\nRBC 4.6 10^12/л 4-5.5");
   assert.deepEqual(parsed.facts.map(f => [f.concept, f.value, f.unit]), [["WBC", 5.8, "10^9/л"], ["PLT", 250, "10^9/л"], ["RBC", 4.6, "10^12/л"]]);
@@ -143,6 +164,46 @@ test("multisystem laboratory results preserve values and references", () => {
   assert.equal(parsed.facts.find(f => f.concept === "GLU")?.value, 5.5);
   assert.equal(parsed.facts.find(f => f.concept === "HGB")?.referenceHigh, 160);
   assert.equal(parsed.facts.find(f => f.concept === "TSH")?.value, 2.1);
+});
+
+test("printed lab rows keep the assay code and a reference glued to the unit", () => {
+  const parsed = parseDocument([
+    "Взятие биоматериала: 27.10.2022 09:00",
+    "Эритроцитарные параметры",
+    "Гемоглобин (Hb) 148,10 138,50 - 166,70г/л",
+    "Эритроциты (RBC) 4,98 4,30 - 5,5710^12/л",
+    "Средний объем эритроцита (MCV) 96,00 81,30 - 100,12фл",
+    "Тромбоциты (PLT) 298 165 - 396,210^9/л",
+    "Лейкоциты (WBC) 4,19 3,89 - 9,2310^9/л",
+    "СОЭ (по Вестергрену) 11 2 - 15мм/ч",
+    "Витамин D (25-ОН) (кальциферол)** 29 нг/мл",
+    "30 100",
+    "Цинк 8,5 10,7 - 18,4мкмоль/л",
+  ].join("\n"));
+  const fact = (concept: string) => parsed.facts.find((item) => item.concept === concept);
+  assert.equal(fact("HGB")?.value, 148.1);
+  assert.equal(fact("HGB")?.unit, "г/л");
+  assert.equal(fact("HGB")?.referenceLow, 138.5);
+  assert.equal(fact("HGB")?.referenceHigh, 166.7);
+  assert.equal(fact("HGB")?.date, "2022-10-27");
+  assert.equal(fact("RBC")?.value, 4.98);
+  assert.equal(fact("RBC")?.unit, "10^12/л");
+  assert.equal(fact("RBC")?.referenceHigh, 5.57);
+  assert.equal(fact("PLT")?.value, 298);
+  assert.equal(fact("PLT")?.unit, "10^9/л");
+  assert.equal(fact("PLT")?.referenceHigh, 396.2);
+  assert.equal(fact("WBC")?.unit, "10^9/л");
+  assert.equal(fact("WBC")?.referenceHigh, 9.23);
+  assert.equal(fact("ESR")?.value, 11);
+  assert.equal(fact("ESR")?.unit, "мм/ч");
+  assert.equal(fact("VITD")?.value, 29);
+  assert.equal(fact("VITD")?.referenceLow, 30);
+  assert.equal(fact("VITD")?.referenceHigh, 100);
+  assert.equal(fact("ZINC")?.value, 8.5);
+  assert.equal(fact("ZINC")?.unit, "мкмоль/л");
+  assert.equal(fact("ZINC")?.referenceLow, 10.7);
+  assert.equal(parsed.facts.some((item) => item.value === 96), false);
+  assert.equal(parsed.issues.some((item) => /числа рядом нет/.test(item.description)), false);
 });
 
 test("measurement units may follow the result without a space", () => {

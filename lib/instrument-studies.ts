@@ -28,7 +28,7 @@ const injection = /ignore previous|игнорируй предыдущ|you are n
 export function instrumentStudies(state: OwnerState): InstrumentStudy[] {
   return state.documents.filter(d => d.status === "ready").flatMap(document => {
     let text = document.anonymizedText;
-    if (/\.(png|jpe?g|webp)$/i.test(document.fileName)) {
+    if (text.trim().startsWith("{")) {
       try { const r = sanitizeImageReading(JSON.parse(text)); if (!r) return []; text = readingLines(r); } catch { return []; }
     }
     if (identityLeft(text)) return [];

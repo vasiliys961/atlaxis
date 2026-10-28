@@ -8,7 +8,7 @@ import { dropDocument } from "./drop-document";
 import { findingQuestion, sheetQuestion } from "./discuss";
 import { patientFileNote } from "./patient-note";
 import { askDoctorOpus } from "./doctor-opus";
-import { EXPLAIN_SYSTEM, acceptExplanation, findingBrief, sheetBrief } from "./explain";
+import { EXPLAIN_SYSTEM, acceptExplanation, considerationReply, findingBrief, sheetBrief } from "./explain";
 import { guidelineSentence } from "./guidelines";
 import { acceptGuidelineSearch, guidelineSearchPrompt, RU_NOT_FOUND, settleRussianSearch, sonarFoundRussian } from "./guidelines-search";
 import { sanitizeImageReading } from "./image-json";
@@ -22,7 +22,7 @@ import { extractPdfText } from "./pdf";
 import { buildReport, validateReport } from "./report";
 import { analyzeClinicalState } from "./clinical-engine";
 import { aggregateEvaluations } from "./evaluation";
-import { emptyState, type OwnerState } from "./types";
+import { emptyState, type OwnerState, type ReportView } from "./types";
 
 test("dropping one file leaves the others", () => {
   const state = emptyState();
@@ -85,8 +85,27 @@ test("a calm theme goes to sonnet and a disputed one to opus", () => {
   assert.equal(routeQuestion("боль в груди уже час"), "safety_urgent");
   assert.equal(routeQuestion("что значит глюкоза"), "sonnet");
   assert.equal(routeQuestion("почему доза другая"), "opus");
+  assert.equal(routeQuestion("какие здесь проблемы"), "opus");
+  assert.equal(routeQuestion("ну а если желчегонные"), "opus");
+  assert.equal(routeQuestion("можно ли принимать желчегонные"), "opus");
   assert.equal(routeQuestion("а это вообще серьёзно"), "luna");
   assert.equal(routeQuestion(sheetQuestion()), "sonnet");
+  const opinion = considerationReply("ну а если желчегонные", {
+    advisory: {
+      summary: "",
+      priorities: [],
+      plan: [],
+      issues: [
+        { id: "liver", title: "Печень", summary: "", findings: ["билирубин выше референса"], considerations: [], questions: [], sources: [] },
+        { id: "gallbladder", title: "Желчный пузырь", summary: "", findings: ["полип"], considerations: [], questions: [], sources: [] },
+      ],
+    },
+  } as ReportView);
+  assert.match(opinion, /можно рассматривать/);
+  assert.match(opinion, /не значит, что их нужно начинать/);
+  assert.match(opinion, /уточняют симптомы/);
+  assert.doesNotMatch(opinion, /принимайте|Сначала сверить|4\.320/);
+  assert.equal(considerationReply("что значит глюкоза", { advisory: { summary: "", priorities: [], issues: [], plan: [] } } as ReportView), "");
   assert.equal(readLuna("urgent"), "urgent");
   assert.equal(readLuna("ordinary question"), "ordinary");
 });
@@ -404,10 +423,10 @@ test("invented dose blocks the report", () => {
   assert.equal(report.status, "blocked");
 });
 
-test("working catalog has 15 clusters and 20 axes", () => {
+test("working catalog has 15 clusters and 21 axes", () => {
   assert.equal(CLUSTERS.length, 15);
-  assert.equal(AXES.length, 20);
-  assert.equal(new Set(AXES.map((axis) => axis.id)).size, 20);
+  assert.equal(AXES.length, 21);
+  assert.equal(new Set(AXES.map((axis) => axis.id)).size, 21);
 });
 
 test("a picture may reach the eyes and not the brain", () => {
@@ -511,10 +530,11 @@ test("sonar looks up guidelines for the recorded labs only", () => {
   assert.match(prompt, /проверкой последующих обновлений/);
   assert.match(prompt, /Ищи действующие редакции/);
   assert.match(prompt, /Отсутствие свежего результата/);
-  assert.match(prompt, /Не ограничивайся дислипидемией/);
+  assert.match(prompt, /не более трёх наиболее подходящих первичных документов/);
+  assert.match(prompt, /не требуют отдельной рекомендации каждая/);
+  assert.match(prompt, /Не пиши абзацы «не найдено»/);
   assert.match(prompt, /Не ставь новый или предположительный диагноз/);
   assert.match(prompt, /Не назначай и не отменяй лечение/);
-  assert.match(prompt, /Российскую рекомендацию поиск не нашёл/);
   const found = "Клинические рекомендации Минздрава России по нарушениям липидного обмена, 2023.";
   assert.equal(sonarFoundRussian(found), true);
   assert.equal(sonarFoundRussian(RU_NOT_FOUND), false);
@@ -561,7 +581,7 @@ test("clinical engine produces explicit axes, trends, conflicts and missing data
   assert.equal(lipid?.status, "sufficient_data");
   assert.equal(lipid?.trends.length, 1);
   assert.match(lipid?.trends[0]?.explanation ?? "", /причина изменения.*не устанавливается/);
-  assert.ok(analysis.axes.length === 20);
+  assert.ok(analysis.axes.length === 21);
 });
 
 test("evaluation aggregation blocks on any blocker", () => {

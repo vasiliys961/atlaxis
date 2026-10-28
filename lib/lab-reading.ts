@@ -28,7 +28,7 @@ export function reconcileLabReading(reading: ImageReading): ParsedDocument {
     fact.unit = row.unit;
     fact.referenceLow = low;
     fact.referenceHigh = high;
-    if ((row.referenceLow && low === null) || (row.referenceHigh && high === null)) addIssue("Референс структурированной строки не является числовой границей. Непроверенная граница не использована.", fact);
+    if ((row.referenceLow && low === null) || (row.referenceHigh && high === null)) addIssue("Рядом с показателем референс указан текстом, поэтому сравнить значение с числовым диапазоном нельзя.", fact);
     if (low !== null && high !== null && low > high) addIssue("Границы референса перепутаны; разбор не исправляет их автоматически.", fact);
     const matches = original.filter(other => other.concept === fact.concept);
     if (!matches.length) return;

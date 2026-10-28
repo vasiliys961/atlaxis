@@ -2,8 +2,11 @@
 
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LiveAvatarDemo } from "./LiveAvatarDemo";
 import { DISCUSS_EVENT } from "@/lib/discuss";
 import type { ChatMode, ChatTurn } from "@/lib/types";
+
+type TalkChannel = "written" | "voice" | "realtime";
 
 function readable(text: string): string {
   return text
@@ -16,22 +19,29 @@ function readable(text: string): string {
 export function ChatDock() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 1100px)").matches) setCollapsed(true);
+  }, []);
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [mode, setMode] = useState<ChatMode>("analysis");
+  const [modeLoaded, setModeLoaded] = useState(false);
+  useEffect(() => { try { const saved = sessionStorage.getItem("atlaxis-chat-mode"); if (saved === "analysis" || saved === "general") setMode(saved); } catch {} setModeLoaded(true); }, []);
+  useEffect(() => { if (modeLoaded) { try { sessionStorage.setItem("atlaxis-chat-mode", mode); } catch {} } }, [mode, modeLoaded]);
+  const [channel, setChannel] = useState<TalkChannel>("written");
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const thread = useRef<HTMLDivElement>(null);
-  const queue = useRef<{ text: string; restore: boolean; mode: ChatMode }[]>([]);
+  const queue = useRef<{ text: string; restore: boolean; mode: ChatMode; responseStyle: "written" | "dialogue" }[]>([]);
   const sending = useRef(false);
   const spoke = useRef(false);
 
-  const deliver = useCallback(async (message: string, restore: boolean, mode: ChatMode) => {
+  const deliver = useCallback(async (message: string, restore: boolean, mode: ChatMode, responseStyle: "written" | "dialogue" = "written"): Promise<string | undefined> => {
     const text = message.trim();
     if (!text) return;
     spoke.current = true;
     if (sending.current) {
-      queue.current.push({ text, restore, mode });
+      queue.current.push({ text, restore, mode, responseStyle });
       return;
     }
     sending.current = true;
@@ -43,11 +53,12 @@ export function ChatDock() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, mode }),
+        body: JSON.stringify({ message: text, mode, responseStyle }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Не удалось ответить.");
       setMessages(body.messages as ChatTurn[]);
+      return (body.messages as ChatTurn[]).filter(item => item.role === "assistant" && (item.mode ?? "analysis") === mode).at(-1)?.text;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Не удалось ответить.");
       if (restore) setDraft(text);
@@ -55,14 +66,14 @@ export function ChatDock() {
       sending.current = false;
       setPending(false);
       const next = queue.current.shift();
-      if (next) void deliver(next.text, next.restore, next.mode);
+      if (next) void deliver(next.text, next.restore, next.mode, next.responseStyle);
     }
   }, []);
 
   useEffect(() => {
     function onDiscuss(event: Event) {
       const message = (event as CustomEvent<string>).detail;
-      if (typeof message === "string") { setMode("analysis"); void deliver(message, false, "analysis"); }
+      if (typeof message === "string") { setChannel("written"); setMode("analysis"); void deliver(message, false, "analysis"); }
     }
     window.addEventListener(DISCUSS_EVENT, onDiscuss);
     return () => window.removeEventListener(DISCUSS_EVENT, onDiscuss);
@@ -129,9 +140,17 @@ export function ChatDock() {
           </button>
         </div>
       </header>
+      <div className="talk-channels" role="radiogroup" aria-label="Как обсудить">
+        <button type="button" role="radio" aria-checked={channel === "written"} onClick={() => { setCollapsed(false); setChannel("written"); }}>Письменно</button>
+        <button type="button" role="radio" aria-checked={channel === "voice"} onClick={() => { setCollapsed(false); setChannel("voice"); }}>Голосом</button>
+        <button type="button" role="radio" aria-checked={channel === "realtime"} onClick={() => { setCollapsed(false); setChannel("realtime"); }}>В реальном времени</button>
+      </div>
+      {channel === "realtime" ? <p className="talk-note">Дороже обычного разговора. Пока выбран этот способ, письменный ввод и пошаговый голос на паузе: внимание только сессии с профессором. Оплата — минуты аудио OpenAI и каждый его ответ. Чтобы вернуться, выберите «Письменно» или «Голосом».</p> : null}
+      {channel === "voice" ? <p className="talk-note">Вопрос голосом попадает в эту переписку. Профессор пишет ответ здесь и произносит его.</p> : null}
+      {!collapsed && channel !== "written" ? <LiveAvatarDemo channel={channel} mode={mode} onQuestion={text => deliver(text, false, mode, "dialogue")} answer={readable([...messages].reverse().find(item => item.role === "assistant" && (item.mode ?? "analysis") === mode)?.text ?? "")} /> : null}
       <div className="professor-modes" role="group" aria-label="Режим разговора">
-        <button type="button" aria-pressed={mode === "analysis"} onClick={() => setMode("analysis")} disabled={pending}>По моим документам</button>
-        <button type="button" aria-pressed={mode === "general"} onClick={() => setMode("general")} disabled={pending}>Общий вопрос</button>
+        <button type="button" aria-pressed={mode === "analysis"} onClick={() => setMode("analysis")} disabled={pending || channel === "realtime"}>По моим документам</button>
+        <button type="button" aria-pressed={mode === "general"} onClick={() => setMode("general")} disabled={pending || channel === "realtime"}>Общий вопрос</button>
       </div>
       <div className="chat-thread" ref={thread}>
         {messages.filter(item => (item.mode ?? "analysis") === mode).length === 0 ? (
@@ -146,16 +165,16 @@ export function ChatDock() {
         {pending ? <p className="quiet">Смотрим ваши сведения…</p> : null}
         {error ? <p className="error">{error}</p> : null}
       </div>
-      <form className="chat-form" onSubmit={send}>
+      {channel === "written" ? <form className="chat-form" onSubmit={send}>
         <textarea
           value={draft}
-          rows={3}
+          rows={4}
           maxLength={1500}
           placeholder={mode === "general" ? "Например: что показывает ферритин?" : "Что означают изменения в моём разборе?"}
           onChange={(event) => setDraft(event.target.value)}
         />
         <button type="submit" disabled={pending || !draft.trim()}>Спросить</button>
-      </form>
+      </form> : null}
     </aside>
   );
 }

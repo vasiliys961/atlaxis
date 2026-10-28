@@ -12,6 +12,13 @@ export function acceptWording(candidate: string, state: OwnerState, cited = ""):
     if (fact.referenceHigh != null) allowed.add(String(fact.referenceHigh));
   }
   for (const medication of state.medications) allowed.add(medication.doseText);
+  for (const document of state.documents) {
+    for (const match of document.anonymizedText.matchAll(/(\d+(?:[.,]\d+)?)/g)) {
+      const value = match[1] ?? "";
+      allowed.add(value);
+      allowed.add(value.replace(",", "."));
+    }
+  }
   for (const match of cited.matchAll(/(\d+(?:[.,]\d+)?)/g)) {
     const value = match[1] ?? "";
     allowed.add(value);

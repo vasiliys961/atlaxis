@@ -49,6 +49,48 @@ test("unknown marker remains readable to whole-context synthesis", () => {
   assert.ok(readingLines(r).includes("Антитела к CCP"));
 });
 
+test("a photo answer written as plain lines is kept, not discarded", async () => {
+  const { settleDocument } = await import("./ingest");
+  const { emptyState, PIPELINE_VERSION } = await import("./types");
+  const { buildReport } = await import("./report");
+  const oldFetch = global.fetch, oldKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test";
+  global.fetch = (async () => Response.json({ choices: [{ message: { content: "Гемоглобин 140 г/л\nЗаключение: синусовый ритм" } }] })) as typeof fetch;
+  try {
+    const state = emptyState();
+    const doc = { id: "plain", fileName: "alena.jpg", byteSize: 1, contentHash: "hash", pipelineVersion: PIPELINE_VERSION, studyDate: null, anonymizedText: "", createdAt: "2025-01-01", status: "queued" as const, statusLabel: "", note: "" };
+    state.documents.push(doc);
+    await settleDocument(state, doc, Buffer.from("fixture"));
+    const report = buildReport(state);
+    assert.equal(doc.status, "ready");
+    assert.match(report.readings?.find((item) => item.name === "alena.jpg")?.text ?? "", /синусовый ритм/);
+    assert.match(report.readings?.[0]?.text ?? "", /140/);
+  } finally { global.fetch = oldFetch; if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = oldKey; }
+});
+
+test("an empty first vision answer is retried with a readable-page prompt", async () => {
+  const { readImageJson } = await import("./polza");
+  const oldFetch = global.fetch, oldKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test";
+  let calls = 0;
+  global.fetch = (async () => {
+    calls += 1;
+    const content = calls === 1
+      ? JSON.stringify({ studyDate: "", lines: [], measurements: [], medications: [], visualFindings: [] })
+      : JSON.stringify({ studyDate: "", lines: ["Заключение: синусовый ритм"], measurements: [], medications: [], visualFindings: [] });
+    return Response.json({ choices: [{ message: { content } }] });
+  }) as typeof fetch;
+  try {
+    const reading = await readImageJson(Buffer.from("fixture"), "image/jpeg");
+    assert.equal(calls, 2);
+    assert.deepEqual(reading?.lines, ["Заключение: синусовый ритм"]);
+  } finally {
+    global.fetch = oldFetch;
+    if (oldKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = oldKey;
+  }
+});
+
 test("ingestion and report preserve an OCR reference conflict with two source lines", async () => {
   const { settleDocument } = await import("./ingest");
   const { emptyState, PIPELINE_VERSION } = await import("./types");

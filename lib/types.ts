@@ -1,4 +1,4 @@
-export const PIPELINE_VERSION = "2026-10-08.9";
+export const PIPELINE_VERSION = "2026-10-28.1";
 
 export const REGIONS = ["RU", "EU", "US"] as const;
 export type Region = (typeof REGIONS)[number];
@@ -98,6 +98,36 @@ export type ReportBlock = {
   notes?: { model: string; label: string; text: string }[];
 };
 
+export type AdvisoryPriority = {
+  id: string;
+  level: "verify" | "attention" | "follow_up";
+  title: string;
+  summary: string;
+  sources: SourceRef[];
+};
+
+export type AdvisoryIssue = {
+  id: string;
+  title: string;
+  summary: string;
+  findings: string[];
+  considerations: string[];
+  questions: string[];
+  sources: SourceRef[];
+};
+
+export type AdvisoryPlanSection = {
+  title: string;
+  items: string[];
+};
+
+export type AdvisoryView = {
+  summary: string;
+  priorities: AdvisoryPriority[];
+  issues: AdvisoryIssue[];
+  plan: AdvisoryPlanSection[];
+};
+
 export type ReportView = {
   extractionProblems?: ReportBlock[];
   measurementHistory?: import("./measurement-history").MeasurementHistory[];
@@ -126,10 +156,12 @@ export type ReportView = {
   cannotSay: string[];
   limits: string[];
   imageReadings?: { name: string; json: string }[];
+  readings?: { id: string; name: string; text: string }[];
   wording?: { model: string; label: string; text: string }[];
   modelsReady?: boolean;
   clinicalQuality?: { score: number; verdict: "pass" | "review" | "block"; evaluatorModels: string[]; blockerCount: number };
   axisResults?: { axisId: string; title: string; status: "sufficient_data" | "partial_data" | "insufficient_data"; factCount: number; trendCount: number; conflictCount: number; missingCount: number }[];
+  advisory?: AdvisoryView;
 };
 
 export type StoredReport = ReportView & { id: string };

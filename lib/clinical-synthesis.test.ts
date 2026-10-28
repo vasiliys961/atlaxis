@@ -86,6 +86,27 @@ test("new diagnostic explanations require real source IDs", () => {
   assert.equal(validateClinicalCandidate(valid, context), null);
 });
 
+test("differential hypotheses are allowed only with evidence and missing context", () => {
+  const context = buildClinicalContext(stateWith(text));
+  const c = {
+    ...candidate(),
+    possibleExplanations: [{
+      title: "Возможная причина изменения",
+      text: "Такую категорию причин можно обсуждать, но по одной строке она не подтверждается.",
+      evidence: ["d:2"],
+      missing: ["Симптомы и сопоставимые результаты в динамике"],
+    }],
+    followUpDiscussion: [{
+      title: "Уточнение причины",
+      text: "С врачом можно обсудить, какие дополнительные данные помогут различить возможные причины.",
+      evidence: ["d:2"],
+    }],
+  };
+  assert.ok(validateClinicalCandidate(c, context));
+  c.possibleExplanations[0]!.missing = [];
+  assert.equal(validateClinicalCandidate(c, context), null);
+});
+
 test("documented diagnosis cannot be fabricated by changing the hypothesis label", () => {
   const c = candidate();
   c.documentedRecords = [{title:"Несуществующий диагноз",text:"Запись документа.",evidence:["d:1"]}];
@@ -182,20 +203,20 @@ test("publication runs generation and independent review, caches, and invalidate
     models.push(request.model);
     assert.equal(request.messages[0].role, "system");
     assert.equal(request.messages[1].role, "user");
-    return Response.json({ choices: [{ message: { content: request.model.includes("sonar") ? `${SEARCH_SCOPE} ${RU_NOT_FOUND}` : JSON.stringify(request.model.includes("opus") ? candidate() : pass) } }] });
+    return Response.json({ choices: [{ message: { content: JSON.stringify(request.model.includes("opus") ? candidate() : pass) } }] });
   };
   try {
     const state = stateWith(text);
     const first = await publishReport(state);
     assert.equal(first.clinicalSynthesis?.status, "ready");
-    assert.equal(models.length, 3);
+    assert.equal(models.length, 2);
     assert.equal(reportNeedsRefresh(state), false);
     await publishReport(state);
-    assert.equal(models.length, 3);
+    assert.equal(models.length, 2);
     state.documents[0]!.contentHash = "updated";
     assert.equal(reportNeedsRefresh(state), true);
     await publishReport(state);
-    assert.equal(models.length, 6);
+    assert.equal(models.length, 4);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey;

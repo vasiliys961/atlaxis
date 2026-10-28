@@ -25,7 +25,7 @@ const CONCEPTS: { id: string; label: string; pattern: RegExp }[] = [
   { id: "URIC", label: "мочевая кислота", pattern: /(?<![\p{L}])(?:мочевая кислота|uric acid|urate)(?![\p{L}])/iu },
   { id: "AMYLASE", label: "амилаза", pattern: /(?<![\p{L}])(?:амилаз[\p{L}]*|amylase)(?![\p{L}])/iu },
   { id: "VITD", label: "витамин D", pattern: /(?<![\p{L}])(?:витамин\s*[dд]|25-oh)(?![\p{L}])/iu },
-  { id: "ZN", label: "цинк", pattern: /(?<![\p{L}])(?:цинк|zinc|zn)(?![\p{L}])/iu },
+  { id: "ZINC", label: "цинк", pattern: /(?<![\p{L}])(?:цинк|zinc|zn)(?![\p{L}])/iu },
   { id: "ESR", label: "СОЭ", pattern: /(?<![\p{L}])(?:соэ|esr)(?![\p{L}])/iu },
   { id: "INR", label: "МНО", pattern: /(?<![\p{L}])(?:мно|inr)(?![\p{L}])/iu },
   { id: "NA", label: "натрий", pattern: /(?<![\p{L}])(?:натрий|sodium)(?![\p{L}])/iu },
@@ -34,6 +34,9 @@ const CONCEPTS: { id: string; label: string; pattern: RegExp }[] = [
 ];
 
 const DATE_LINE = /дат[аы](?:\s+исследовани[\p{L}]+|\s+анализа)?\s*[:.]?\s*(\d{4}-\d{2}-\d{2}|\d{2}[./]\d{2}[./]\d{4})/iu;
+const COLLECTION_DATE = /взятие биоматериала\s*:\s*(\d{4}-\d{2}-\d{2}|\d{2}[./]\d{2}[./]\d{4})/iu;
+const QUALITATIVE = /повыш|пониж|сниж|высок|низк|норм|отрицат|положит|обнаруж|отсутств/iu;
+const BARE_RANGE = /^(-?\d+(?:[.,]\d+)?)\s+(-?\d+(?:[.,]\d+)?)$/u;
 const DATE_HEADER = /^дат[аы](?:\s+исследовани[\p{L}]+|\s+анализа)?\s*[:.]/iu;
 const INSTRUCTION = /игнорируй предыдущ|ignore previous|поставь диагноз|you are now|системн[\p{L}]*\s+промпт/iu;
 const CONCLUSION = /заключен/i;
@@ -63,18 +66,80 @@ function numberFrom(raw: string): number {
   return Number(raw.replace(",", "."));
 }
 
-function measurementFrom(line: string, pattern: RegExp): { valueText: string; unit: string; low: number | null; high: number | null } | null {
-  const marker = line.match(pattern);
-  if (!marker || marker.index == null) return null;
-  // Read the result immediately after the marker. Digits in HbA1c, 10^9/l
-  // or ml/min/1.73m2 must never become the measured value.
-  const tail = line.slice(marker.index + marker[0].length).trim().replace(/^\([A-Za-zА-Яа-я0-9 -]{1,16}\)\s*/, "").replace(/^[:=]\s*/, "");
-  const result = tail.match(/^(-?\d+(?:[.,]\d+)?)(.*)$/u);
-  if (!result?.[1]) return null;
-  const rest = (result[2] ?? "").trim();
-  const range = rest.match(/^(.*?)\s*(-?\d+(?:[.,]\d+)?)\s*[-–—]\s*(-?\d+(?:[.,]\d+)?)$/u);
-  const unit = (range?.[1] ?? rest).trim();
-  return { valueText: result[1], unit, low: range?.[2] ? numberFrom(range[2]) : null, high: range?.[3] ? numberFrom(range[3]) : null };
+function skipCodes(tail: string): string {
+  let rest = tail.trim().replace(/^[:=]\s*/, "");
+  for (let step = 0; step < 4; step += 1) {
+    const next = rest.replace(/^\([^)]{0,48}\)\s*/, "").replace(/^\*+\s*/, "").trim();
+    if (next === rest) break;
+    rest = next;
+  }
+  return rest;
+}
+
+function takeNumber(source: string): { num: string; rest: string } | null {
+  // A PDF text layer often glues the reference to 10^9/л: "5,5710^12/л".
+  const glued = source.match(/^(-?\d+[.,]\d+?)(?=10\^)/u);
+  if (glued?.[1]) return { num: glued[1], rest: source.slice(glued[1].length) };
+  const plain = source.match(/^(-?\d+(?:[.,]\d+)?)(\+)?/u);
+  if (!plain?.[1]) return null;
+  return { num: plain[1], rest: source.slice(plain[0].length) };
+}
+
+const LAB_CODE = /^[AА]\d{2}(?:\.\d{2,3})+(?=\s)/u;
+const QUALIFIER = /^(непрям(?:ой|ого)?|прям(?:ой|ого)?|общ(?:ий|его)?|свободн[\p{L}]*|венозн[\p{L}]*|крови|сыворот[\p{L}]*)(?![\p{L}])[\s,:]*/iu;
+const SEDIMENT = /клеток\s*\/|п\/з|поле\s+зрен/iu;
+
+function prepareTail(tail: string): { rest: string; fraction: "direct" | "indirect" | "total" | "" } {
+  let rest = tail.trim();
+  let fraction: "direct" | "indirect" | "total" | "" = "";
+  for (let step = 0; step < 6; step += 1) {
+    const coded = skipCodes(rest);
+    if (coded !== rest) {
+      rest = coded;
+      continue;
+    }
+    const code = rest.match(LAB_CODE);
+    if (code) {
+      rest = rest.slice(code[0].length).trim();
+      continue;
+    }
+    const qualifier = rest.match(QUALIFIER);
+    if (!qualifier) break;
+    const word = qualifier[1]?.toLowerCase() ?? "";
+    if (word.startsWith("непрям")) fraction = "indirect";
+    else if (word.startsWith("прям")) fraction = "direct";
+    else if (!fraction) fraction = "total";
+    rest = rest.slice(qualifier[0].length).trim();
+  }
+  return { rest, fraction };
+}
+
+function cleanUnit(unit: string): string {
+  return unit.replace(/[*+]+/g, " ").replace(/смотри\s+текст/giu, " ").replace(/\s+/g, " ").trim();
+}
+
+function measurementFrom(tail: string): { valueText: string; unit: string; low: number | null; high: number | null; fraction: "direct" | "indirect" | "total" | "" } | null {
+  const prepared = prepareTail(tail);
+  const value = takeNumber(prepared.rest);
+  if (!value) return null;
+  const rest = value.rest.trim();
+  const upper = rest.match(/^(.*?)\s*(?:<=|<|≤)\s*(-?\d+(?:[.,]\d+)?)(.*)$/u);
+  if (upper?.[2] && !/[-–—]/.test(upper[3] ?? "")) {
+    return { valueText: value.num, unit: cleanUnit(upper[1] ?? ""), low: null, high: numberFrom(upper[2]), fraction: prepared.fraction };
+  }
+  const lowerBound = rest.match(/^(.*?)\s*(?:>=|>|≥)\s*(-?\d+(?:[.,]\d+)?)(.*)$/u);
+  if (lowerBound?.[2] && !/[-–—]/.test(lowerBound[3] ?? "")) {
+    return { valueText: value.num, unit: cleanUnit(lowerBound[1] ?? ""), low: numberFrom(lowerBound[2]), high: null, fraction: prepared.fraction };
+  }
+  const low = takeNumber(rest);
+  const dashed = low?.rest.match(/^\s*[-–—]\s*([\s\S]+)$/u);
+  if (low && dashed?.[1]) {
+    const high = takeNumber(dashed[1]);
+    if (high) return { valueText: value.num, unit: cleanUnit(high.rest), low: numberFrom(low.num), high: numberFrom(high.num), fraction: prepared.fraction };
+  }
+  const range = rest.match(/^(.*?)\s*(-?\d+(?:[.,]\d+)?)\s*[-–—]\s*(-?\d+(?:[.,]\d+)?)(.*)$/u);
+  if (range?.[2] && range[3]) return { valueText: value.num, unit: cleanUnit(`${range[1] ?? ""} ${range[4] ?? ""}`), low: numberFrom(range[2]), high: numberFrom(range[3]), fraction: prepared.fraction };
+  return { valueText: value.num, unit: cleanUnit(rest), low: null, high: null, fraction: prepared.fraction };
 }
 
 function laterThanToday(iso: string): boolean {
@@ -105,6 +170,7 @@ export function parseDocument(text: string): ParsedDocument {
   let conclusionSaysNormal = false;
   let conclusionLine = 0;
   let conclusionExcerpt = "";
+  let pendingRange: ParsedDocument["facts"][number] | null = null;
   const dates: { date: string; line: number; excerpt: string }[] = [];
 
   lines.forEach((rawLine, index) => {
@@ -117,6 +183,32 @@ export function parseDocument(text: string): ParsedDocument {
         line: lineNo,
         excerpt: "инструкция скрыта",
       });
+      return;
+    }
+
+    const bareRange = line.match(BARE_RANGE);
+    if (pendingRange && bareRange?.[1] && bareRange[2]) {
+      pendingRange.referenceLow = numberFrom(bareRange[1]);
+      pendingRange.referenceHigh = numberFrom(bareRange[2]);
+      pendingRange = null;
+      return;
+    }
+    pendingRange = null;
+
+    const collected = line.match(COLLECTION_DATE);
+    if (collected?.[1]) {
+      const parsedDate = isoDate(collected[1]);
+      if (!parsedDate || laterThanToday(parsedDate)) {
+        studyDate = null;
+        issues.push({
+          description: "Дата в строке не складывается в календарную или стоит позже сегодняшнего дня. Она не подставлена.",
+          line: lineNo,
+          excerpt: line.slice(0, 180),
+        });
+      } else {
+        studyDate = parsedDate;
+        dates.push({ date: parsedDate, line: lineNo, excerpt: line.slice(0, 180) });
+      }
       return;
     }
 
@@ -193,9 +285,10 @@ export function parseDocument(text: string): ParsedDocument {
         return;
       }
 
-      const valueMatch = measurementFrom(line, concept.pattern);
+      const marker = line.match(concept.pattern);
+      const valueMatch = marker && marker.index === 0 ? measurementFrom(line.slice(marker[0].length)) : null;
       if (!valueMatch) {
-        if (line.replace(concept.pattern, "").trim()) {
+        if (marker?.index === 0 && QUALITATIVE.test(line)) {
           issues.push({
             description: `В строке назван ${concept.label}, но числа рядом нет. Значение не подставлено.`,
             line: lineNo,
@@ -204,12 +297,23 @@ export function parseDocument(text: string): ParsedDocument {
         }
         return;
       }
+      if (SEDIMENT.test(`${line} ${valueMatch.unit}`)) return;
       const low = valueMatch.low;
       const high = valueMatch.high;
       const value = numberFrom(valueMatch.valueText);
+      // A near-zero glucose with an upper bound around 1 mmol/L is a urine
+      // result. It is not the same measurement as serum glucose.
+      if (concept.id === "GLU" && high != null && high <= 1.5 && value < 2 && (low == null || low <= 0)) return;
+      const bilirubin = concept.id === "BILI"
+        ? valueMatch.fraction === "direct"
+          ? { id: "BILI_D", label: "билирубин прямой" }
+          : valueMatch.fraction === "indirect"
+            ? { id: "BILI_I", label: "билирубин непрямой" }
+            : { id: "BILI", label: "билирубин общий" }
+        : { id: concept.id, label: concept.label };
       const fact = {
-        concept: concept.id,
-        label: concept.label,
+        concept: bilirubin.id,
+        label: bilirubin.label,
         value,
         valueText: valueMatch.valueText.replace(",", "."),
         unit: valueMatch.unit,
@@ -219,7 +323,9 @@ export function parseDocument(text: string): ParsedDocument {
         line: lineNo,
         excerpt: line,
       };
-      facts.push(stampFact(fact));
+      const stored = stampFact(fact);
+      facts.push(stored);
+      pendingRange = stored.referenceLow == null && stored.referenceHigh == null ? stored : null;
       if (value < 0) {
         issues.push({
           description: `${fact.label} записан как ${fact.valueText}. Число меньше нуля оставлено как в строке и не заменено.`,

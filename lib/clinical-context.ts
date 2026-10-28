@@ -21,9 +21,10 @@ export function buildClinicalContext(state: OwnerState, guidelineSearch?: string
   const reasons: string[] = [];
   const documents = state.documents.filter(d => d.status === "ready").map((document, index) => {
     let text = document.anonymizedText;
-    const image = /\.(png|jpe?g|webp)$/i.test(document.fileName);
+    const storedJson = text.trim().startsWith("{");
+    const image = /\.(png|jpe?g|webp)$/i.test(document.fileName) || storedJson;
     const dicom = /\.(dcm|dicom)$/i.test(document.fileName);
-    if (image) {
+    if (storedJson) {
       try {
         text = sourceDocumentText(document);
       } catch {

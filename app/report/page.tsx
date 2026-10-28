@@ -225,10 +225,88 @@ export default function ReportPage() {
         </div>
       </section>
 
+      {report.advisory ? (
+        <>
+          <section className="section">
+            <p className="kicker">Главное</p>
+            <h2>Цельная картина по загруженным данным</h2>
+            <p className="lead">{report.advisory.summary}</p>
+            {report.advisory.priorities.length ? (
+              <div>
+                {report.advisory.priorities.map((priority) => (
+                  <article className={priority.level === "verify" ? "note warn" : "note"} key={priority.id}>
+                    <h3>
+                      {priority.level === "verify" ? "Сначала проверить" : priority.level === "attention" ? "Требует внимания" : "Проследить в динамике"}: {priority.title}
+                    </h3>
+                    <p>{priority.summary}</p>
+                    <details>
+                      <summary>Исходные строки</summary>
+                      {priority.sources.map((source) => <Quote key={`${source.documentId}-${source.line}-${source.excerpt}`} source={source} />)}
+                    </details>
+                    <Discuss text={`${priority.title}. ${priority.summary}`} />
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+
+          {report.advisory.issues.length ? (
+            <section className="section">
+              <h2>Как связаны находки</h2>
+              {report.advisory.issues.map((issue) => (
+                <article className="note" key={issue.id}>
+                  <h3>{issue.title}</h3>
+                  <p>{issue.summary}</p>
+                  {issue.findings.map((finding) => <p key={finding}>{finding}</p>)}
+                  <h4>О чём можно думать</h4>
+                  <p className="quiet">Это возможные направления размышления, а не диагноз.</p>
+                  {issue.considerations.map((consideration) => <p key={consideration}>{consideration}</p>)}
+                  <h4>Что уточнить с врачом</h4>
+                  {issue.questions.map((question) => <p className="question" key={question}>{question}</p>)}
+                  <details>
+                    <summary>Исходные строки</summary>
+                    {issue.sources.map((source) => <Quote key={`${source.documentId}-${source.line}-${source.excerpt}`} source={source} />)}
+                  </details>
+                  <Discuss text={`${issue.title}. ${issue.summary} ${issue.questions.join(" ")}`} />
+                </article>
+              ))}
+            </section>
+          ) : null}
+
+          {report.advisory.plan.length ? (
+            <section className="section">
+              <h2>План дальнейшего обсуждения</h2>
+              <p className="quiet">Это подготовка к консультации, а не назначение обследований или лечения.</p>
+              {report.advisory.plan.map((section) => (
+                <article className="note" key={section.title}>
+                  <h3>{section.title}</h3>
+                  {section.items.map((item) => <p key={item}>{item}</p>)}
+                </article>
+              ))}
+            </section>
+          ) : null}
+        </>
+      ) : null}
+
+      {report.readings?.length ? (
+        <section className="section">
+          <details>
+            <summary>Проверить весь распознанный текст файлов</summary>
+            <p className="quiet">Это доказательная часть для сверки с оригиналами, а не основной вывод.</p>
+            {report.readings.map((item) => (
+              <article className="note" key={item.id}>
+                <h3>{item.name}</h3>
+                <pre>{item.text}</pre>
+              </article>
+            ))}
+          </details>
+        </section>
+      ) : null}
+
       <section className="section">
         <h2>Комплексная клиническая интерпретация</h2>
         {!report.measurementHistory?.length && report.extractionProblems?.length ? <div className="notice"><strong>Результаты анализов пока не извлечены надёжно.</strong><p>Текст документа доступен, но таблица не разобрана. Это проблема чтения файла, а не отсутствие показателей у вас. После обновления обработки загрузите исходный PDF повторно.</p></div> : null}
-        <p className="quiet">Основная система рекомендаций: {{ RU: "Российская Федерация", US: "США", EU: "Европа" }[report.region]}. Источники других регионов используются для отдельного сопоставления.</p>
+        <p className="quiet">Простое объяснение записей из документов. Это не диагноз и не назначение лечения. Основная система рекомендаций: {{ RU: "Российская Федерация", US: "США", EU: "Европа" }[report.region]}. Источники других регионов используются для отдельного сопоставления.</p>
         {!report.clinicalSynthesis ? (
           <p className="quiet">{report.modelsReady ? "Общий разбор всех документов ещё готовится." : "Для комплексной интерпретации нужен подключённый медицинский ИИ. Записи из документов доступны ниже."}</p>
         ) : (
@@ -241,6 +319,10 @@ export default function ReportPage() {
                 {report.clinicalSynthesis.documentedRecords.map((item, i) => <article className="note" key={`record-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,lead:"Запись автора документа; её актуальность оценивает врач.",sources:item.sources}} /></article>)}
                 {report.clinicalSynthesis.explanations.length ? <h3>Как понимать изменения</h3> : null}
                 {report.clinicalSynthesis.explanations.map((item, i) => <article className="note" key={`explanation-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,sources:item.sources}} />{item.missing.map((text, n) => <p className="quiet" key={n}>Для понимания: {text}</p>)}</article>)}
+                {report.clinicalSynthesis.possibleExplanations?.length ? <h3>Какие причины и заболевания можно обсуждать</h3> : null}
+                {report.clinicalSynthesis.possibleExplanations?.map((item, i) => <article className="note" key={`possible-${i}`}><h4>{item.title}</h4><p className="quiet">Возможная гипотеза, не диагноз.</p><Statements block={{title:item.title,body:item.text,sources:item.sources}} />{item.missing.map((text, n) => <p className="quiet" key={n}>Для проверки гипотезы не хватает: {text}</p>)}</article>)}
+                {report.clinicalSynthesis.followUpDiscussion?.length ? <h3>Что можно дообследовать</h3> : null}
+                {report.clinicalSynthesis.followUpDiscussion?.map((item, i) => <article className="note" key={`follow-up-${i}`}><h4>{item.title}</h4><p className="quiet">Вариант для совместного решения с врачом.</p><Statements block={{title:item.title,body:item.text,sources:item.sources}} /></article>)}
                 {report.clinicalSynthesis.discussionPoints.length ? <h3>Что обсудить с врачом</h3> : null}
                 {report.clinicalSynthesis.discussionPoints.map((item, i) => <article className="note" key={`question-${i}`}><h4>{item.title}</h4><Statements block={{title:item.title,body:item.text,sources:item.sources}} /></article>)}
                 {report.clinicalSynthesis.practicalAdvice.length > 0 ? <h3>Практические аспекты</h3> : null}
@@ -280,6 +362,8 @@ export default function ReportPage() {
 
       {report.extractionProblems?.length ? <section className="section"><h2>Что не удалось прочитать надёжно</h2>{report.extractionProblems.map(block => <article className="note" key={block.title}><h3>{block.title}</h3><p>{block.body}</p><details><summary>Посмотреть непрочитанные строки</summary>{block.sources.map(source=><Quote key={`${source.documentId}-${source.line}`} source={source} />)}</details></article>)}</section> : null}
 
+      <details className="section">
+        <summary>Подробные показатели, хронология и технические ограничения</summary>
       {report.conflicts.length > 0 ? (
         <section className="section">
           <h2>Где записи не сходятся</h2>
@@ -386,6 +470,7 @@ export default function ReportPage() {
           ))}
         </section>
       ) : null}
+      </details>
 
       <section className="section">
         <h2>Источники для объяснения</h2>

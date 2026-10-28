@@ -3,7 +3,7 @@ import { dropDocument } from "@/lib/drop-document";
 import { removeKey } from "@/lib/files";
 import { ownerId } from "@/lib/owner";
 import { stageFile } from "@/lib/ingest";
-import { catalogEntries, guidelineSentence } from "@/lib/guidelines";
+import { buildAdvisory } from "@/lib/advisory";
 import { buildRelationships, buildTimeline } from "@/lib/report";
 import { listedDocuments, reportNeedsRefresh } from "@/lib/publish";
 import { continueAfterResponse, drainOwner, enqueueDocument, reportPending } from "@/lib/queue";
@@ -21,8 +21,7 @@ export async function GET() {
       report: state.report
         ? {
             ...state.report,
-            catalog: catalogEntries(state.region),
-            guidelineNote: guidelineSentence(state.region, state.report.guidelineSearch),
+            advisory: state.report.status === "blocked" ? state.report.advisory : buildAdvisory(state),
             timeline: state.report.status === "blocked" ? [] : buildTimeline(state),
             relationships: state.report.status === "blocked" ? [] : buildRelationships(state),
           }

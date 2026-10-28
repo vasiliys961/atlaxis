@@ -129,7 +129,7 @@ test("same month does not imply a clinical relationship between drug and lab", a
   assert.equal(report.relationships.length, 0);
   assert.match(report.themes.map((item) => item.body).join("\n"), /В документе:/);
   assert.doesNotMatch(report.relationships.map((item) => item.body).join("\n"), /вызвал/);
-  assert.match(report.gaps.join("\n"), /Ось «Давление»/);
+  assert.doesNotMatch(report.gaps.join("\n"), /Ось «Давление»/);
 });
 
 test("table and conclusion disagreement is shown", async () => {
@@ -178,12 +178,12 @@ test("image is kept out and the imaging axis stays incomplete", async () => {
   const report = buildReport(state);
   const imaging = describeAxes(state).find((axis) => axis.id === "imaging");
   assert.equal(state.documents.find((item) => item.fileName === "scan.png")?.status, "anonymization_unconfirmed");
-  assert.match(state.documents.find((item) => item.fileName === "scan.png")?.note ?? "", /Готовый снимок/);
-  assert.match(state.documents.find((item) => item.fileName === "phone.jpg")?.note ?? "", /смартфона/);
+  assert.match(state.documents.find((item) => item.fileName === "scan.png")?.note ?? "", /не нашлось текста бланка/);
+  assert.match(state.documents.find((item) => item.fileName === "phone.jpg")?.note ?? "", /не нашлось текста бланка/);
   assert.equal(imaging?.status, "insufficient_data");
   assert.match(report.headline, /2 снимка/);
   assert.match(report.cannotSay.join(" "), /снимку нельзя назвать измерения/);
-  assert.match(report.gaps.join(" "), /нет давления/);
+  assert.doesNotMatch(report.gaps.join(" "), /нет давления/);
 });
 
 test("a long jpeg name keeps its type", async () => {

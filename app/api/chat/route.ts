@@ -20,12 +20,13 @@ export async function DELETE() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { message?: unknown; mode?: unknown };
+    const body = await request.json() as { message?: unknown; mode?: unknown; responseStyle?: unknown };
     const message = typeof body.message === "string" ? body.message : "";
     if (body.mode !== undefined && body.mode !== "analysis" && body.mode !== "general") return Response.json({ error: "Неизвестный режим чата." }, { status: 400 });
+    if (body.responseStyle !== undefined && body.responseStyle !== "written" && body.responseStyle !== "dialogue") return Response.json({ error: "Неизвестный формат ответа." }, { status: 400 });
     const id = ownerId();
     const snapshot = await withOwner(id, async (state) => structuredClone(state));
-    const messages = await chatReply(snapshot, message, body.mode === "general" ? "general" : "analysis");
+    const messages = await chatReply(snapshot, message, body.mode === "general" ? "general" : "analysis", body.responseStyle === "dialogue" ? "dialogue" : "written");
     await withOwner(id, async (state) => {
       state.chat = messages;
     });
