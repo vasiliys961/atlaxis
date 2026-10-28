@@ -288,7 +288,8 @@ export function parseDocument(text: string): ParsedDocument {
       const marker = line.match(concept.pattern);
       const valueMatch = marker && marker.index === 0 ? measurementFrom(line.slice(marker[0].length)) : null;
       if (!valueMatch) {
-        if (marker?.index === 0 && QUALITATIVE.test(line)) {
+        const bare = line.replace(concept.pattern, "").replace(/\([^)]{0,32}\)/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
+        if (marker?.index === 0 && (QUALITATIVE.test(line) || bare.length === 0)) {
           issues.push({
             description: `В строке назван ${concept.label}, но числа рядом нет. Значение не подставлено.`,
             line: lineNo,
